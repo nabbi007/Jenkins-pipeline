@@ -1,0 +1,26 @@
+#!/bin/bash
+set -euxo pipefail
+
+yum update -y
+yum install -y git docker jq yum-utils unzip
+amazon-linux-extras install java-openjdk11 -y
+
+systemctl enable docker
+systemctl start docker
+usermod -aG docker ec2-user
+
+wget -O /etc/yum.repos.d/jenkins.repo https://pkg.jenkins.io/redhat-stable/jenkins.repo
+rpm --import https://pkg.jenkins.io/redhat-stable/jenkins.io-2023.key
+yum install -y jenkins
+
+usermod -aG docker jenkins
+systemctl enable jenkins
+systemctl start jenkins
+
+# Install AWS CLI v2 for ECR auth in pipeline and deployment scripts.
+curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "/tmp/awscliv2.zip"
+unzip -q /tmp/awscliv2.zip -d /tmp
+/tmp/aws/install
+
+# Node exporter used by Prometheus.
+docker run -d --name node-exporter --restart unless-stopped -p 9100:9100 prom/node-exporter:latest

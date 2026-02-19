@@ -1,0 +1,56 @@
+#!/bin/bash
+set -euxo pipefail
+
+yum update -y
+yum install -y docker
+systemctl enable docker
+systemctl start docker
+
+docker network inspect obs-net >/dev/null 2>&1 || docker network create obs-net
+
+mkdir -p /opt/observability/prometheus
+mkdir -p /opt/observability/grafana/provisioning/datasources
+
+cat >/opt/observability/prometheus/prometheus.yml <<PROM
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: "backend"
+    static_configs:
+      - targets: ["${app_private_ip}:3000"]
+    metrics_path: /metrics
+
+  - job_name: "node_exporter"
+    static_configs:
+      - targets: ["${app_private_ip}:9100", "localhost:9100"]
+PROM
+
+cat >/opt/observability/grafana/provisioning/datasources/prometheus.yml <<GRAFANA_DS
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+GRAFANA_DS
+
+# Prometheus
+docker run -d --name prometheus --restart unless-stopped \
+  --network obs-net \
+  -p 9090:9090 \
+  -v /opt/observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro \
+  prom/prometheus:v2.54.1
+
+# Grafana
+docker run -d --name grafana --restart unless-stopped \
+  --network obs-net \
+  -p 3000:3000 \
+  -e GF_SECURITY_ADMIN_USER=admin \
+  -e GF_SECURITY_ADMIN_PASSWORD='${grafana_admin_password}' \
+  -v /opt/observability/grafana/provisioning:/etc/grafana/provisioning:ro \
+  grafana/grafana:11.2.2
+
+# Node exporter for host metrics
+docker run -d --name node-exporter --restart unless-stopped -p 9100:9100 prom/node-exporter:latest

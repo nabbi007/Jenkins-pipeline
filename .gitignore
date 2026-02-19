@@ -1,0 +1,21 @@
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+override.tf
+override.tf.json
+*.tfvars
+*.tfplan
+
+# Node
+node_modules/
+coverage/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Jenkins
+.jenkins/
