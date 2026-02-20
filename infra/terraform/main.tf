@@ -1,8 +1,52 @@
+# Generate random suffix for globally unique S3 bucket name.
+resource "random_id" "bucket_suffix" {
+  byte_length = 4
+}
+
 locals {
   common_tags = {
     Project = var.project_name
     Managed = "terraform"
   }
+  # Use provided bucket name or auto-generate one.
+  cloudtrail_bucket_name = coalesce(
+    var.cloudtrail_s3_bucket_name,
+    "${var.project_name}-${random_id.bucket_suffix.hex}"
+  )
+  # Default Grafana password if not provided via env var.
+  grafana_password = coalesce(var.grafana_admin_password, "ChangeMe123!")
+  # Generate EC2 key pair by default. Use existing key only when explicitly requested.
+  requested_existing_key_name = trimspace(var.key_name == null ? "" : var.key_name)
+  use_existing_key            = var.use_existing_key && local.requested_existing_key_name != ""
+  generate_ssh_key            = !local.use_existing_key
+  effective_key_name          = local.use_existing_key ? local.requested_existing_key_name : "${var.project_name}-ec2-${random_id.bucket_suffix.hex}"
+  generated_private_key_path  = "${path.module}/${local.effective_key_name}.pem"
+}
+
+resource "tls_private_key" "ec2" {
+  count = local.generate_ssh_key ? 1 : 0
+
+  algorithm = "RSA"
+  rsa_bits  = 4096
+}
+
+resource "aws_key_pair" "ec2" {
+  count = local.generate_ssh_key ? 1 : 0
+
+  key_name   = local.effective_key_name
+  public_key = tls_private_key.ec2[0].public_key_openssh
+
+  tags = merge(local.common_tags, {
+    Name = local.effective_key_name
+  })
+}
+
+resource "local_file" "ec2_private_key" {
+  count = local.generate_ssh_key ? 1 : 0
+
+  filename        = local.generated_private_key_path
+  content         = tls_private_key.ec2[0].private_key_pem
+  file_permission = "0400"
 }
 
 resource "aws_security_group" "jenkins_app" {
@@ -266,12 +310,13 @@ resource "aws_cloudwatch_log_group" "frontend" {
 }
 
 resource "aws_instance" "jenkins_app" {
-  ami                    = data.aws_ami.amazon_linux_2.id
-  instance_type          = var.app_instance_type
-  key_name               = var.key_name
-  subnet_id              = var.subnet_id
-  vpc_security_group_ids = [aws_security_group.jenkins_app.id]
-  iam_instance_profile   = aws_iam_instance_profile.ec2_profile.name
+  ami                         = data.aws_ami.amazon_linux_2.id
+  instance_type               = var.app_instance_type
+  key_name                    = local.generate_ssh_key ? aws_key_pair.ec2[0].key_name : var.key_name
+  subnet_id                   = local.effective_subnet_id
+  vpc_security_group_ids      = [aws_security_group.jenkins_app.id]
+  iam_instance_profile        = aws_iam_instance_profile.ec2_profile.name
+  associate_public_ip_address = true
 
   user_data = templatefile("${path.module}/templates/jenkins_app_userdata.sh.tftpl", {
     region = var.region
@@ -288,16 +333,17 @@ resource "aws_instance" "jenkins_app" {
 }
 
 resource "aws_instance" "observability" {
-  ami                    = data.aws_ami.amazon_linux_2.id
-  instance_type          = var.observability_instance_type
-  key_name               = var.key_name
-  subnet_id              = var.subnet_id
-  vpc_security_group_ids = [aws_security_group.observability.id]
-  iam_instance_profile   = aws_iam_instance_profile.ec2_profile.name
+  ami                         = data.aws_ami.amazon_linux_2.id
+  instance_type               = var.observability_instance_type
+  key_name                    = local.generate_ssh_key ? aws_key_pair.ec2[0].key_name : var.key_name
+  subnet_id                   = local.effective_subnet_id
+  vpc_security_group_ids      = [aws_security_group.observability.id]
+  iam_instance_profile        = aws_iam_instance_profile.ec2_profile.name
+  associate_public_ip_address = true
 
   user_data = templatefile("${path.module}/templates/observability_userdata.sh.tftpl", {
     app_private_ip         = aws_instance.jenkins_app.private_ip
-    grafana_admin_password = var.grafana_admin_password
+    grafana_admin_password = local.grafana_password
   })
 
   root_block_device {
@@ -311,10 +357,11 @@ resource "aws_instance" "observability" {
 }
 
 resource "aws_s3_bucket" "cloudtrail" {
-  bucket = var.cloudtrail_s3_bucket_name
+  bucket        = local.cloudtrail_bucket_name
+  force_destroy = true
 
   tags = merge(local.common_tags, {
-    Name = var.cloudtrail_s3_bucket_name
+    Name = local.cloudtrail_bucket_name
   })
 }
 
@@ -351,6 +398,8 @@ resource "aws_s3_bucket_lifecycle_configuration" "cloudtrail" {
   rule {
     id     = "cloudtrail-retention"
     status = "Enabled"
+
+    filter {}
 
     expiration {
       days = var.cloudtrail_retention_days

@@ -3,7 +3,7 @@ set -euxo pipefail
 
 yum update -y
 yum install -y git docker jq yum-utils unzip
-amazon-linux-extras install java-openjdk11 -y
+yum install -y java-17-amazon-corretto-headless
 
 systemctl enable docker
 systemctl start docker
@@ -16,6 +16,10 @@ yum install -y jenkins
 usermod -aG docker jenkins
 systemctl enable jenkins
 systemctl start jenkins
+
+# Install Node.js 20.x (needed by Jenkins pipeline for npm lint/test/build).
+curl -fsSL https://rpm.nodesource.com/setup_20.x | bash -
+yum install -y nodejs
 
 # Install AWS CLI v2 for ECR auth in pipeline and deployment scripts.
 curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "/tmp/awscliv2.zip"

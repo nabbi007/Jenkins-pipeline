@@ -3,6 +3,21 @@ output "jenkins_public_ip" {
   value       = aws_instance.jenkins_app.public_ip
 }
 
+output "ec2_key_pair_name" {
+  description = "EC2 key pair name used by both instances"
+  value       = local.effective_key_name
+}
+
+output "generated_ssh_private_key_path" {
+  description = "Path to generated PEM private key. Null when using an existing key_name."
+  value       = local.generate_ssh_key ? local_file.ec2_private_key[0].filename : null
+}
+
+output "jenkins_ssh_command" {
+  description = "SSH command for Jenkins + app host"
+  value       = local.generate_ssh_key ? "ssh -i ${local_file.ec2_private_key[0].filename} ec2-user@${aws_instance.jenkins_app.public_ip}" : "ssh -i <path-to-private-key-for-${local.effective_key_name}> ec2-user@${aws_instance.jenkins_app.public_ip}"
+}
+
 output "jenkins_url" {
   description = "Jenkins UI URL"
   value       = "http://${aws_instance.jenkins_app.public_ip}:8080"

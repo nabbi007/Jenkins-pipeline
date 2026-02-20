@@ -1,10 +1,22 @@
-region                    = "us-east-1"
-project_name              = "jenkins-cicd-observability"
-subnet_id                 = "subnet-xxxxxxxx"
-key_name                  = "my-ec2-keypair"
-allowed_cidr              = "203.0.113.10/32"
-backend_ecr_repo_name     = "backend-service"
-frontend_ecr_repo_name    = "frontend-web"
-cloudtrail_s3_bucket_name = "my-unique-cloudtrail-bucket-12345"
-cloudtrail_retention_days = 90
-grafana_admin_password    = "ChangeMeStrongPassword!"
+# Required: Set these via environment variables (recommended for secrets)
+# export TF_VAR_subnet_id="subnet-xxxxxxxx"
+# export TF_VAR_grafana_admin_password="YourStrongPassword!"
+# export TF_VAR_allowed_cidr="$(curl -s ifconfig.me)/32"
+
+# Or set them here (less secure for passwords)
+region        = "eu-west-1"
+project_name  = "jenkins-cicd-observability"
+
+# This should be set via env var or uncommented below:
+# subnet_id    = "subnet-xxxxxxxx"
+# use_existing_key = true
+# key_name         = "my-existing-ec2-keypair"  # Required only when use_existing_key=true
+
+# Optional overrides (have sensible defaults):
+# allowed_cidr              = "203.0.113.10/32"
+# app_instance_type         = "t3.micro"
+# observability_instance_type = "t3.medium"
+# backend_ecr_repo_name     = "backend-service"
+# frontend_ecr_repo_name    = "frontend-web"
+# cloudtrail_s3_bucket_name = "my-custom-bucket"  # auto-generated if not set
+# cloudtrail_retention_days = 90
