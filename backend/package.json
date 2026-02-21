@@ -10,7 +10,7 @@
     "test:ci": "jest --ci --coverage --runInBand"
   },
   "dependencies": {
-    "express": "4.19.2",
+    "express": "^4.21.2",
     "ioredis": "5.3.2",
     "prom-client": "15.1.3"
   },

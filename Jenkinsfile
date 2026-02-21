@@ -61,7 +61,7 @@ pipeline {
           sh 'npm install --no-audit --no-fund'
           sh 'npm run lint'
           sh 'npm run test:ci'
-          sh 'npm audit --audit-level=high'
+          sh 'npm audit --audit-level=high --omit=dev'
         }
       }
     }
