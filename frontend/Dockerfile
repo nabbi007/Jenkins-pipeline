@@ -8,8 +8,19 @@ RUN npm run build
 
 FROM nginx:1.27-alpine
 
+# Create non-root user for nginx
+RUN addgroup -S nginx && adduser -S -G nginx nginx
+
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+# Fix permissions for nginx user
+RUN chown -R nginx:nginx /var/cache/nginx && \
+    touch /var/run/nginx.pid && \
+    chown nginx:nginx /var/run/nginx.pid && \
+    chown -R nginx:nginx /usr/share/nginx/html
+
+USER nginx
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD wget -qO- http://127.0.0.1/ || exit 1
