@@ -37,13 +37,20 @@ pipeline {
           env.IMAGE_TAG = "${env.SAFE_BRANCH}-${env.GIT_SHA}-${env.BUILD_NUMBER}"
 
           if (!params.ECR_ACCOUNT_ID?.trim()) {
-            error('Parameter ECR_ACCOUNT_ID is required')
+            // Auto-detect AWS account ID from the instance's IAM role — no manual input needed.
+            env.ECR_ACCOUNT_ID_EFFECTIVE = sh(
+              script: 'aws sts get-caller-identity --query Account --output text',
+              returnStdout: true
+            ).trim()
+            if (!env.ECR_ACCOUNT_ID_EFFECTIVE) {
+              error('Could not determine AWS account ID. Ensure the EC2 IAM role has sts:GetCallerIdentity permission.')
+            }
+          } else {
+            env.ECR_ACCOUNT_ID_EFFECTIVE = params.ECR_ACCOUNT_ID.trim()
           }
-
-          env.ECR_REGISTRY = "${params.ECR_ACCOUNT_ID}.dkr.ecr.${params.AWS_REGION}.amazonaws.com"
-          env.ECR_ACCOUNT_ID_EFFECTIVE = params.ECR_ACCOUNT_ID
-          env.BACKEND_IMAGE_URI = "${params.ECR_ACCOUNT_ID}.dkr.ecr.${params.AWS_REGION}.amazonaws.com/${params.BACKEND_ECR_REPO}:${env.IMAGE_TAG}"
-          env.FRONTEND_IMAGE_URI = "${params.ECR_ACCOUNT_ID}.dkr.ecr.${params.AWS_REGION}.amazonaws.com/${params.FRONTEND_ECR_REPO}:${env.IMAGE_TAG}"
+          env.ECR_REGISTRY = "${env.ECR_ACCOUNT_ID_EFFECTIVE}.dkr.ecr.${params.AWS_REGION}.amazonaws.com"
+          env.BACKEND_IMAGE_URI = "${env.ECR_ACCOUNT_ID_EFFECTIVE}.dkr.ecr.${params.AWS_REGION}.amazonaws.com/${params.BACKEND_ECR_REPO}:${env.IMAGE_TAG}"
+          env.FRONTEND_IMAGE_URI = "${env.ECR_ACCOUNT_ID_EFFECTIVE}.dkr.ecr.${params.AWS_REGION}.amazonaws.com/${params.FRONTEND_ECR_REPO}:${env.IMAGE_TAG}"
         }
       }
     }
@@ -127,7 +134,7 @@ pipeline {
     stage('Push Image To ECR') {
       steps {
         withCredentials([
-          usernamePassword(credentialsId: 'registry_creds', usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')
+          usernamePassword(credentialsId: 'aws_creds', usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')
         ]) {
           sh '''
             aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "$ECR_REGISTRY"
