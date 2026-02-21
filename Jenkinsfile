@@ -107,7 +107,7 @@ pipeline {
       }
     }
 
-    stage('Container Security Scan (Optional)') {
+    stage('Container Security Scan') {
       when {
         expression { return params.ENABLE_TRIVY }
       }
