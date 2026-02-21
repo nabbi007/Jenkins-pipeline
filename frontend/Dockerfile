@@ -8,13 +8,10 @@ RUN npm run build
 
 FROM nginx:1.27-alpine
 
-# Create non-root user for nginx
-RUN addgroup -S nginx && adduser -S -G nginx nginx
-
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# Fix permissions for nginx user
+# Fix permissions for the built-in nginx user (already exists in the base image).
 RUN chown -R nginx:nginx /var/cache/nginx && \
     touch /var/run/nginx.pid && \
     chown nginx:nginx /var/run/nginx.pid && \
