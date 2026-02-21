@@ -6,7 +6,8 @@ jest.mock("../src/redis", () => ({
   redisClient: {
     hgetall: jest.fn().mockResolvedValue(null),
     hset: jest.fn().mockResolvedValue("OK"),
-    hincrby: jest.fn().mockResolvedValue(1)
+    hincrby: jest.fn().mockResolvedValue(1),
+    on: jest.fn()
   },
   isRedisConnected: jest.fn().mockReturnValue(false)
 }));
