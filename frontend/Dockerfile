@@ -23,6 +23,6 @@ RUN chown -R nginx:nginx /var/cache/nginx && \
 USER nginx
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-  CMD wget -qO- http://127.0.0.1/ || exit 1
+  CMD wget -qO- http://127.0.0.1/nginx-health || exit 1
 
 CMD ["nginx", "-g", "daemon off;"]
