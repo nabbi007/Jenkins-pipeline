@@ -18,19 +18,19 @@ while [ $(date +%s) -lt $END_TIME ]; do
   # Get current poll
   curl -s "$APP_URL:3000/api/poll" > /dev/null
   
-  # Cast some votes
+  # Cast some votes (options must match VOTING_OPTIONS in backend/src/app.js)
   CANDIDATE=$((RANDOM % 3))
   if [ $CANDIDATE -eq 0 ]; then
-    CANDIDATE_NAME="Alice"
+    CANDIDATE_NAME="Engineering"
   elif [ $CANDIDATE -eq 1 ]; then
-    CANDIDATE_NAME="Bob"
+    CANDIDATE_NAME="Product"
   else
-    CANDIDATE_NAME="Charlie"
+    CANDIDATE_NAME="Design"
   fi
   
   curl -s -X POST "$APP_URL:3000/api/vote" \
     -H "Content-Type: application/json" \
-    -d "{\"candidate\":\"$CANDIDATE_NAME\"}" > /dev/null
+    -d "{\"option\":\"$CANDIDATE_NAME\"}" > /dev/null
   
   # Get results
   curl -s "$APP_URL:3000/api/results" > /dev/null
