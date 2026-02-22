@@ -63,6 +63,14 @@ resource "aws_security_group" "jenkins_app" {
   }
 
   ingress {
+    description = "SSH from self "
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    self        = true
+  }
+
+  ingress {
     description = "Jenkins UI"
     from_port   = 8080
     to_port     = 8080
@@ -98,6 +106,14 @@ resource "aws_security_group" "jenkins_app" {
     description     = "Node exporter from observability host"
     from_port       = 9100
     to_port         = 9100
+    protocol        = "tcp"
+    security_groups = [aws_security_group.observability.id]
+  }
+
+  ingress {
+    description     = "Redis exporter from observability host"
+    from_port       = 9121
+    to_port         = 9121
     protocol        = "tcp"
     security_groups = [aws_security_group.observability.id]
   }
