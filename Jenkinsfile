@@ -150,7 +150,7 @@ pipeline {
         }
       }
       steps {
-        withCredentials([sshUserPrivateKey(credentialsId: 'ec2_ssh', keyFileVariable: 'SSH_KEY')]) {
+        withCredentials([sshUserPrivateKey(credentialsId: 'ec2_ssh', keyFileVariable: 'ses_sec')]) {
           sh '''
             scp -i "$SSH_KEY" -o StrictHostKeyChecking=no scripts/deploy_backend.sh ec2-user@$DEPLOY_HOST:/tmp/deploy_backend.sh
             scp -i "$SSH_KEY" -o StrictHostKeyChecking=no scripts/deploy_frontend.sh ec2-user@$DEPLOY_HOST:/tmp/deploy_frontend.sh
