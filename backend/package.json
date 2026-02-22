@@ -7,7 +7,7 @@
     "start": "node src/server.js",
     "lint": "eslint \"src/**/*.js\" \"tests/**/*.js\"",
     "test": "jest --runInBand",
-    "test:ci": "jest --ci --coverage --runInBand"
+    "test:ci": "jest --ci --coverage --runInBand --forceExit"
   },
   "dependencies": {
     "express": "^4.21.2",

@@ -97,10 +97,6 @@ const updateVoteMetrics = () => {
   updateRedisMetric();
 };
 
-// Update metrics every 5 seconds
-setInterval(updateVoteMetrics, 5000);
-updateVoteMetrics(); // Initial update
-
 app.use(express.json());
 
 const createInitialVotes = () => {
@@ -109,6 +105,10 @@ const createInitialVotes = () => {
 
 let voteStore = createInitialVotes();
 const storageMode = () => (isRedisConnected() ? "redis" : "memory");
+
+// Update metrics every 5 seconds (after voteStore is initialized)
+const metricsInterval = setInterval(updateVoteMetrics, 5000);
+updateVoteMetrics(); // Initial update
 
 const currentResults = () => {
   const results = VOTING_OPTIONS.map((option) => ({
@@ -259,5 +259,6 @@ app.use((_req, res) => {
 
 module.exports = {
   app,
-  resetVotes
+  resetVotes,
+  metricsInterval
 };

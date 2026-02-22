@@ -12,11 +12,18 @@ jest.mock("../src/redis", () => ({
   isRedisConnected: jest.fn().mockReturnValue(false)
 }));
 
-const { app, resetVotes } = require("../src/app");
+const { app, resetVotes, metricsInterval } = require("../src/app");
 
 describe("backend service", () => {
   beforeEach(async () => {
     await resetVotes();
+  });
+
+  afterAll(() => {
+    // Clean up the metrics interval to allow Jest to exit
+    if (metricsInterval) {
+      clearInterval(metricsInterval);
+    }
   });
 
   it("returns health payload", async () => {
