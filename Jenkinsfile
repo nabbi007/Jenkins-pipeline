@@ -133,15 +133,12 @@ pipeline {
 
     stage('Push Image To ECR') {
       steps {
-        withCredentials([
-          usernamePassword(credentialsId: 'aws_creds', usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')
-        ]) {
-          sh '''
-            aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "$ECR_REGISTRY"
-            docker push "$BACKEND_IMAGE_URI"
-            docker push "$FRONTEND_IMAGE_URI"
-          '''
-        }
+        // Use the EC2 IAM role directly — no stored AWS credentials needed.
+        sh '''
+          aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "$ECR_REGISTRY"
+          docker push "$BACKEND_IMAGE_URI"
+          docker push "$FRONTEND_IMAGE_URI"
+        '''
       }
     }
 
