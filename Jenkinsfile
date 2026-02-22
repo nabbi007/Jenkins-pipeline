@@ -150,13 +150,13 @@ pipeline {
         }
       }
       steps {
-        sshagent(credentials: ['ec2_ssh']) {
+        withCredentials([sshUserPrivateKey(credentialsId: 'ec2_ssh', keyFileVariable: 'SSH_KEY')]) {
           sh '''
-            scp -o StrictHostKeyChecking=no scripts/deploy_backend.sh ec2-user@$DEPLOY_HOST:/tmp/deploy_backend.sh
-            scp -o StrictHostKeyChecking=no scripts/deploy_frontend.sh ec2-user@$DEPLOY_HOST:/tmp/deploy_frontend.sh
-            ssh -o StrictHostKeyChecking=no ec2-user@$DEPLOY_HOST "chmod +x /tmp/deploy_backend.sh /tmp/deploy_frontend.sh"
-            ssh -o StrictHostKeyChecking=no ec2-user@$DEPLOY_HOST "/tmp/deploy_backend.sh '$AWS_REGION' '$ECR_ACCOUNT_ID_EFFECTIVE' '$BACKEND_ECR_REPO' '$IMAGE_TAG' '$BACKEND_LOG_GROUP'"
-            ssh -o StrictHostKeyChecking=no ec2-user@$DEPLOY_HOST "/tmp/deploy_frontend.sh '$AWS_REGION' '$ECR_ACCOUNT_ID_EFFECTIVE' '$FRONTEND_ECR_REPO' '$IMAGE_TAG' '$FRONTEND_LOG_GROUP'"
+            scp -i "$SSH_KEY" -o StrictHostKeyChecking=no scripts/deploy_backend.sh ec2-user@$DEPLOY_HOST:/tmp/deploy_backend.sh
+            scp -i "$SSH_KEY" -o StrictHostKeyChecking=no scripts/deploy_frontend.sh ec2-user@$DEPLOY_HOST:/tmp/deploy_frontend.sh
+            ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no ec2-user@$DEPLOY_HOST "chmod +x /tmp/deploy_backend.sh /tmp/deploy_frontend.sh"
+            ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no ec2-user@$DEPLOY_HOST "/tmp/deploy_backend.sh '$AWS_REGION' '$ECR_ACCOUNT_ID_EFFECTIVE' '$BACKEND_ECR_REPO' '$IMAGE_TAG' '$BACKEND_LOG_GROUP'"
+            ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no ec2-user@$DEPLOY_HOST "/tmp/deploy_frontend.sh '$AWS_REGION' '$ECR_ACCOUNT_ID_EFFECTIVE' '$FRONTEND_ECR_REPO' '$IMAGE_TAG' '$FRONTEND_LOG_GROUP'"
           '''
         }
       }
