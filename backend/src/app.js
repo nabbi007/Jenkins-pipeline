@@ -10,11 +10,12 @@ const VOTING_OPTIONS = ["Engineering", "Product", "Design"];
 const registry = new client.Registry();
 client.collectDefaultMetrics({ register: registry });
 
+// HTTP Request Metrics
 const requestDuration = new client.Histogram({
   name: "http_request_duration_seconds",
   help: "Request duration in seconds",
   labelNames: ["method", "route", "status_code"],
-  buckets: [0.05, 0.1, 0.2, 0.5, 1, 2, 5],
+  buckets: [0.001, 0.005, 0.01, 0.05, 0.1, 0.2, 0.5, 1, 2, 5], // Better granularity
   registers: [registry]
 });
 
@@ -31,6 +32,74 @@ const errorCount = new client.Counter({
   labelNames: ["method", "route", "status_code"],
   registers: [registry]
 });
+
+// Business Metrics - Voting
+const votesTotal = new client.Counter({
+  name: "votes_total",
+  help: "Total number of votes cast",
+  labelNames: ["option"],
+  registers: [registry]
+});
+
+const votesGauge = new client.Gauge({
+  name: "votes_current",
+  help: "Current vote count per option",
+  labelNames: ["option"],
+  registers: [registry]
+});
+
+const totalVotesGauge = new client.Gauge({
+  name: "votes_total_count",
+  help: "Total number of all votes",
+  registers: [registry]
+});
+
+// Application Health Metrics
+const redisConnectionGauge = new client.Gauge({
+  name: "redis_connection_status",
+  help: "Redis connection status (1=connected, 0=disconnected)",
+  registers: [registry]
+});
+
+const activeRequestsGauge = new client.Gauge({
+  name: "http_requests_in_progress",
+  help: "Number of HTTP requests currently being processed",
+  labelNames: ["method", "route"],
+  registers: [registry]
+});
+
+const pollViewsCounter = new client.Counter({
+  name: "poll_views_total",
+  help: "Total number of times the poll was viewed",
+  registers: [registry]
+});
+
+const resultsViewsCounter = new client.Counter({
+  name: "results_views_total",
+  help: "Total number of times results were viewed",
+  registers: [registry]
+});
+
+// Update Redis connection status metric
+const updateRedisMetric = () => {
+  redisConnectionGauge.set(isRedisConnected() ? 1 : 0);
+};
+
+// Update vote gauges
+const updateVoteMetrics = () => {
+  let total = 0;
+  VOTING_OPTIONS.forEach(option => {
+    const count = voteStore[option] || 0;
+    votesGauge.labels(option).set(count);
+    total += count;
+  });
+  totalVotesGauge.set(total);
+  updateRedisMetric();
+};
+
+// Update metrics every 5 seconds
+setInterval(updateVoteMetrics, 5000);
+updateVoteMetrics(); // Initial update
 
 app.use(express.json());
 
@@ -105,18 +174,25 @@ hydrateVotes();
 
 app.use((req, res, next) => {
   const startNs = process.hrtime.bigint();
+  const route = req.route?.path || req.path || "unknown";
+  
+  // Track in-progress requests
+  activeRequestsGauge.labels(req.method, route).inc();
 
   res.on("finish", () => {
     const durationSeconds = Number(process.hrtime.bigint() - startNs) / 1e9;
-    const route = req.route?.path || req.path || "unknown";
     const statusCode = String(res.statusCode);
 
+    // Record metrics
     requestDuration.labels(req.method, route, statusCode).observe(durationSeconds);
     requestCount.labels(req.method, route, statusCode).inc();
 
     if (res.statusCode >= 400) {
       errorCount.labels(req.method, route, statusCode).inc();
     }
+
+    // Decrement in-progress requests
+    activeRequestsGauge.labels(req.method, route).dec();
   });
 
   next();
@@ -132,6 +208,7 @@ app.get("/api/health", (_req, res) => {
 });
 
 app.get("/api/poll", (_req, res) => {
+  pollViewsCounter.inc();
   res.status(200).json({
     question: VOTING_QUESTION,
     options: VOTING_OPTIONS
@@ -150,6 +227,10 @@ app.post("/api/vote", (req, res) => {
 
   voteStore[option] += 1;
   persistVoteToRedis(option);
+  
+  // Track business metrics
+  votesTotal.labels(option).inc();
+  updateVoteMetrics(); // Immediate update
 
   return res.status(200).json({
     message: "Vote accepted",
@@ -159,6 +240,7 @@ app.post("/api/vote", (req, res) => {
 });
 
 app.get("/api/results", (_req, res) => {
+  resultsViewsCounter.inc();
   res.status(200).json(currentResults());
 });
 
