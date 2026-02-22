@@ -13,6 +13,9 @@ infra/terraform/*.pem
 node_modules/
 coverage/
 
+# Frontend build output
+frontend/dist/
+
 # OS / editor
 .DS_Store
 .idea/
@@ -20,3 +23,7 @@ coverage/
 
 # Jenkins
 .jenkins/
+
+# Screenshots / local artifacts
+screenshots/*.png
+screenshots/*.jpg
