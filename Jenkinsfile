@@ -12,7 +12,7 @@ pipeline {
     string(name: 'ECR_ACCOUNT_ID', defaultValue: '', description: 'AWS account ID used for ECR URI')
     string(name: 'BACKEND_ECR_REPO', defaultValue: 'backend-service', description: 'ECR repository for backend image')
     string(name: 'FRONTEND_ECR_REPO', defaultValue: 'frontend-web', description: 'ECR repository for frontend image')
-    string(name: 'DEPLOY_HOST', defaultValue: '', description: 'EC2 public IP or DNS where app is deployed')
+    string(name: 'DEPLOY_HOST', defaultValue: '', description: 'EC2 public IP or DNS where app is deployed. Set once via Build with Parameters, then save the branch config to persist it.')
     booleanParam(name: 'ENABLE_SONARQUBE', defaultValue: true, description: 'Run SonarQube scan when scanner + credentials are available')
     booleanParam(name: 'ENABLE_TRIVY', defaultValue: true, description: 'Run container vulnerability scan when trivy is installed')
   }
@@ -177,6 +177,16 @@ pipeline {
       echo "Image tag: ${env.IMAGE_TAG}"
       echo "Backend image: ${env.BACKEND_IMAGE_URI}"
       echo "Frontend image: ${env.FRONTEND_IMAGE_URI}"
+      script {
+        if (params.DEPLOY_HOST?.trim()) {
+          echo "============================================"
+          echo "App URL:     http://${params.DEPLOY_HOST}"
+          echo "Backend API: http://${params.DEPLOY_HOST}:3000/api/health"
+          echo "Metrics:     http://${params.DEPLOY_HOST}:3000/metrics"
+          echo "Jenkins:     http://${params.DEPLOY_HOST}:8080"
+          echo "============================================"
+        }
+      }
     }
   }
 }
