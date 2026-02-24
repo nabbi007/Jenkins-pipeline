@@ -7,13 +7,6 @@ pipeline {
     buildDiscarder(logRotator(numToKeepStr: '20', artifactNumToKeepStr: '20'))
   }
 
-  triggers {
-    // Automatically trigger a build when a push is made to the repository.
-    // Requires the GitHub plugin and a webhook configured in the repo pointing to:
-    // http://<jenkins-host>:8080/github-webhook/
-    githubPush()
-  }
-
   parameters {
     string(name: 'AWS_REGION', defaultValue: 'eu-west-1', description: 'AWS region containing ECR and EC2')
     string(name: 'ECR_ACCOUNT_ID', defaultValue: '', description: 'AWS account ID used for ECR URI')

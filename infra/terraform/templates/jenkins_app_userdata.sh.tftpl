@@ -1,16 +1,32 @@
 #!/bin/bash
 set -euxo pipefail
 
+NODEJS_VERSION="16.20.2"
+NODEJS_ARCHIVE="node-v$NODEJS_VERSION-linux-x64.tar.xz"
+NODEJS_URL="https://nodejs.org/dist/v$NODEJS_VERSION/$NODEJS_ARCHIVE"
+NODEJS_TMP_ARCHIVE="/tmp/$NODEJS_ARCHIVE"
+
+NODE_EXPORTER_VERSION="1.8.2"
+NODE_EXPORTER_DIR="node_exporter-$NODE_EXPORTER_VERSION.linux-amd64"
+NODE_EXPORTER_ARCHIVE="$NODE_EXPORTER_DIR.tar.gz"
+NODE_EXPORTER_URL="https://github.com/prometheus/node_exporter/releases/download/v$NODE_EXPORTER_VERSION/$NODE_EXPORTER_ARCHIVE"
+NODE_EXPORTER_TMP_ARCHIVE="/tmp/$NODE_EXPORTER_ARCHIVE"
+NODE_EXPORTER_TMP_DIR="/tmp/$NODE_EXPORTER_DIR"
+
 yum update -y
-yum install -y git docker jq yum-utils unzip
+yum install -y git docker jq yum-utils unzip tar curl wget
 yum install -y java-17-amazon-corretto-headless
 
 systemctl enable docker
 systemctl start docker
 usermod -aG docker ec2-user
 
-wget -O /etc/yum.repos.d/jenkins.repo https://pkg.jenkins.io/redhat-stable/jenkins.repo
-rpm --import https://pkg.jenkins.io/redhat-stable/jenkins.io-2023.key
+if ! rpm -q jenkins >/dev/null 2>&1; then
+  if [ ! -f /etc/yum.repos.d/jenkins.repo ]; then
+    wget -O /etc/yum.repos.d/jenkins.repo https://pkg.jenkins.io/redhat-stable/jenkins.repo
+  fi
+  rpm --import https://pkg.jenkins.io/redhat-stable/jenkins.io-2023.key
+fi
 yum install -y jenkins
 
 usermod -aG docker jenkins
@@ -20,13 +36,61 @@ systemctl start jenkins
 # Install Node.js 16.x (official binary — compatible with Amazon Linux 2 glibc 2.26).
 # Node 20+ requires glibc 2.28 which AL2 does not ship.
 # Host Node is only used for Jenkins pipeline lint/test — Docker images use Node 20.
-curl -fsSL https://nodejs.org/dist/v16.20.2/node-v16.20.2-linux-x64.tar.xz -o /tmp/node.tar.xz
-tar -xJf /tmp/node.tar.xz -C /usr/local --strip-components=1
+if ! command -v node >/dev/null 2>&1 || [ "$(node -v 2>/dev/null || true)" != "v$NODEJS_VERSION" ]; then
+  if [ ! -f "$NODEJS_TMP_ARCHIVE" ]; then
+    curl -fsSL "$NODEJS_URL" -o "$NODEJS_TMP_ARCHIVE"
+  fi
+  tar -xJf "$NODEJS_TMP_ARCHIVE" -C /usr/local --strip-components=1
+fi
 
 # Install AWS CLI v2 for ECR auth in pipeline and deployment scripts.
-curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "/tmp/awscliv2.zip"
-unzip -q /tmp/awscliv2.zip -d /tmp
-/tmp/aws/install
+if ! command -v aws >/dev/null 2>&1; then
+  if [ ! -f /tmp/awscliv2.zip ]; then
+    curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
+  fi
+  rm -rf /tmp/aws
+  unzip -q /tmp/awscliv2.zip -d /tmp
+  /tmp/aws/install --update
+fi
 
-# Node exporter used by Prometheus.
-docker run -d --name node-exporter --restart unless-stopped -p 9100:9100 prom/node-exporter:latest
+if ! id -u node_exporter >/dev/null 2>&1; then
+  useradd --system --no-create-home --shell /sbin/nologin node_exporter
+fi
+
+if [ ! -x /usr/local/bin/node_exporter ]; then
+  if [ ! -f "$NODE_EXPORTER_TMP_ARCHIVE" ]; then
+    curl -fsSL "$NODE_EXPORTER_URL" -o "$NODE_EXPORTER_TMP_ARCHIVE"
+  fi
+  rm -rf "$NODE_EXPORTER_TMP_DIR"
+  tar -xzf "$NODE_EXPORTER_TMP_ARCHIVE" -C /tmp
+  install -m 0755 "$NODE_EXPORTER_TMP_DIR/node_exporter" /usr/local/bin/node_exporter
+fi
+
+if docker container inspect node-exporter >/dev/null 2>&1; then
+  docker rm -f node-exporter
+fi
+if docker container inspect node_exporter >/dev/null 2>&1; then
+  docker rm -f node_exporter
+fi
+
+cat >/etc/systemd/system/node_exporter.service <<'NODE_EXPORTER_SERVICE'
+[Unit]
+Description=Prometheus Node Exporter
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=node_exporter
+Group=node_exporter
+Type=simple
+ExecStart=/usr/local/bin/node_exporter
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
+NODE_EXPORTER_SERVICE
+
+systemctl daemon-reload
+systemctl enable node_exporter
+systemctl restart node_exporter

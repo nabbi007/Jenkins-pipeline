@@ -145,6 +145,58 @@ The backend exposes these custom metrics at `/metrics`:
 | `poll_views_total` | Counter | How many times the poll was viewed |
 | `results_views_total` | Counter | How many times results were viewed |
 
+### Project 6 Deliverables (Report + Evidence)
+
+- **2-page report:** `docs/project6-report.md`
+- **Evidence index:** `docs/evidence/README.md`
+
+#### Dashboard Screenshots
+
+Backend service dashboard:
+
+![Backend Dashboard](screenshots/backend-dashboard.png)
+
+Application and Redis dashboard:
+
+![Redis Dashboard](screenshots/redis-dashboard.png)
+
+System metrics dashboard:
+
+![System Dashboard](screenshots/system-dashboard.png)
+
+#### Alert Trigger Validation (`HighErrorRate > 5%`)
+
+Trigger command used:
+
+```bash
+./scripts/generate_error_traffic.sh http://54.78.54.132 900
+```
+
+Prometheus alert state after trigger:
+
+```json
+{"labels":{"alertname":"HighErrorRate","severity":"critical"},"state":"firing","activeAt":"2026-02-23T04:18:35.19523625Z"}
+```
+
+Full evidence files:
+
+- `docs/evidence/prometheus-alerts-after-trigger.json`
+- `docs/evidence/prometheus-high-error-rule-state.txt`
+- `docs/evidence/error-traffic-run.txt`
+
+#### CloudWatch, CloudTrail, and GuardDuty Evidence
+
+- CloudWatch log groups and streams:
+  - `docs/evidence/cloudwatch-log-groups.json`
+  - `docs/evidence/cloudwatch-backend-streams.json`
+  - `docs/evidence/cloudwatch-frontend-streams.json`
+- CloudTrail and GuardDuty provisioning/state evidence:
+  - `docs/evidence/terraform-security-state-snippets.txt`
+- Runtime AWS API permission outputs from EC2 role context:
+  - `docs/evidence/cloudtrail-trails.json`
+  - `docs/evidence/cloudtrail-trail-status.json`
+  - `docs/evidence/guardduty-summary.txt`
+
 ---
 
 ## Repository Layout
@@ -182,7 +234,9 @@ The backend exposes these custom metrics at `/metrics`:
 │   ├── cleanup_docker.sh    Remove unused Docker images/containers
 │   └── install_jenkins_plugins.sh  Bootstrap Jenkins plugins
 ├── jenkins/plugins.txt       Jenkins plugin list
-├── docs/                     Architecture and runbook documents
+├── docs/                     Architecture, runbooks, report, and evidence
+│   ├── project6-report.md   2-page Project 6 summary report
+│   └── evidence/            Alert and AWS validation artifacts
 ├── docker-compose.app.yml    Local development stack
 ├── Jenkinsfile               Pipeline definition
 └── sonar-project.properties  SonarQube config
