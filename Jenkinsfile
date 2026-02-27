@@ -163,18 +163,18 @@ EOF
 
             ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no ec2-user@$DEPLOY_HOST_EFFECTIVE "
               set -euo pipefail
+              cd ~/app-deploy
+              aws ecr get-login-password --region '$AWS_REGION' | docker login --username AWS --password-stdin '$ECR_REGISTRY'
+
               if docker compose version >/dev/null 2>&1; then
-                DC='docker compose'
+                docker compose up -d --pull always --remove-orphans
               elif command -v docker-compose >/dev/null 2>&1; then
-                DC='docker-compose'
+                docker-compose up -d --pull always --remove-orphans
               else
                 echo 'Docker Compose is not installed on target host' >&2
                 exit 1
               fi
 
-              cd ~/app-deploy
-              aws ecr get-login-password --region '$AWS_REGION' | docker login --username AWS --password-stdin '$ECR_REGISTRY'
-              \$DC up -d --pull always --remove-orphans
               docker image prune -f || true
             "
 
