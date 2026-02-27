@@ -47,6 +47,14 @@ systemctl enable --now docker
 id -nG ec2-user | grep -qw docker || usermod -aG docker ec2-user
 systemctl is-active --quiet docker || fail "Docker service is not active"
 
+# Install Docker Compose binary if neither plugin nor standalone compose is present.
+if ! docker compose version >/dev/null 2>&1 && ! command -v docker-compose >/dev/null 2>&1; then
+  log "Installing Docker Compose"
+  retry 3 curl -fsSL "https://github.com/docker/compose/releases/download/v2.29.7/docker-compose-linux-x86_64" -o /usr/local/bin/docker-compose
+  chmod +x /usr/local/bin/docker-compose
+  require_cmd docker-compose
+fi
+
 log "Installing Jenkins"
 retry 3 curl -fsSL https://pkg.jenkins.io/redhat-stable/jenkins.repo -o /etc/yum.repos.d/jenkins.repo
 retry 3 rpm --import https://pkg.jenkins.io/redhat-stable/jenkins.io-2023.key

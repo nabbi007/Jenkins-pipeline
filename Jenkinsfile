@@ -4,6 +4,7 @@ pipeline {
   options {
     timestamps()
     disableConcurrentBuilds()
+    parallelsAlwaysFailFast()
   }
 
   triggers {
@@ -16,19 +17,33 @@ pipeline {
     string(name: 'BACKEND_ECR_REPO', defaultValue: 'backend-service', description: 'ECR repository for backend image')
     string(name: 'FRONTEND_ECR_REPO', defaultValue: 'frontend-web', description: 'ECR repository for frontend image')
     string(name: 'DEPLOY_HOST', defaultValue: '', description: 'EC2 public IP to deploy to. Leave blank to auto-detect from instance metadata (handles dynamic IPs on restart).')
-    booleanParam(name: 'ENABLE_SONARQUBE', defaultValue: true, description: 'Run SonarQube scan when scanner + credentials are available')
-    booleanParam(name: 'ENABLE_TRIVY', defaultValue: true, description: 'Run container vulnerability scan when trivy is installed')
-  }
-
-  environment {
-    BACKEND_LOG_GROUP = '/project/backend'
-    FRONTEND_LOG_GROUP = '/project/frontend'
+    string(name: 'BACKEND_LOG_GROUP', defaultValue: '/project/backend', description: 'CloudWatch Logs group for backend container')
+    string(name: 'FRONTEND_LOG_GROUP', defaultValue: '/project/frontend', description: 'CloudWatch Logs group for frontend container')
   }
 
   stages {
     stage('Checkout') {
       steps {
-        checkout scm
+        script {
+          try {
+            checkout([
+              $class: 'GitSCM',
+              branches: scm.branches,
+              userRemoteConfigs: scm.userRemoteConfigs,
+              doGenerateSubmoduleConfigurations: false,
+              extensions: (scm.extensions ?: []) + [[
+                $class: 'CloneOption',
+                depth: 1,
+                shallow: true,
+                noTags: false,
+                timeout: 10
+              ]]
+            ])
+          } catch (Exception ex) {
+            echo "Shallow checkout not available, falling back to default checkout: ${ex.getMessage()}"
+            checkout scm
+          }
+        }
       }
     }
 
@@ -78,32 +93,53 @@ pipeline {
       }
     }
 
-    stage('Shift Left - Backend Lint/Test/SAST') {
-      steps {
-        dir('backend') {
-          sh 'npm install --no-audit --no-fund'
-          sh 'npm run lint'
-          sh 'npm run test:ci'
-          sh 'npm audit --audit-level=high --omit=dev'
+    stage('Shift Left - Lint/Test/Build') {
+      parallel {
+        stage('Backend Lint/Test/SAST') {
+          steps {
+            dir('backend') {
+              sh 'npm install --no-audit --no-fund'
+              sh 'npm run lint'
+              sh 'npm run test:ci'
+              sh 'npm audit --audit-level=high --omit=dev'
+            }
+          }
         }
-      }
-    }
-
-    stage('Shift Left - Frontend Lint/Test/Build') {
-      steps {
-        dir('frontend') {
-          sh 'npm install --no-audit --no-fund'
-          sh 'npm run lint'
-          sh 'npm run test:ci'
-          sh 'npm run build'
+        stage('Frontend Lint/Test/Build') {
+          steps {
+            dir('frontend') {
+              sh 'npm install --no-audit --no-fund'
+              sh 'npm run lint'
+              sh 'npm run test:ci'
+              sh 'npm run build'
+            }
+          }
         }
       }
     }
     
     stage('Docker Build') {
-      steps {
-        sh 'docker build -t "$BACKEND_IMAGE_URI" backend'
-        sh 'docker build -t "$FRONTEND_IMAGE_URI" frontend'
+      parallel {
+        stage('Build Backend Image') {
+          steps {
+            dir('backend') {
+              sh '''
+                export DOCKER_BUILDKIT=1
+                docker build -t "$BACKEND_IMAGE_URI" .
+              '''
+            }
+          }
+        }
+        stage('Build Frontend Image') {
+          steps {
+            dir('frontend') {
+              sh '''
+                export DOCKER_BUILDKIT=1
+                docker build -t "$FRONTEND_IMAGE_URI" .
+              '''
+            }
+          }
+        }
       }
     }
 
@@ -127,11 +163,38 @@ pipeline {
       steps {
         withCredentials([sshUserPrivateKey(credentialsId: 'ec2_ssh', keyFileVariable: 'SSH_KEY')]) {
           sh '''
-            scp -i "$SSH_KEY" -o StrictHostKeyChecking=no scripts/deploy_backend.sh ec2-user@$DEPLOY_HOST_EFFECTIVE:/tmp/deploy_backend.sh
-            scp -i "$SSH_KEY" -o StrictHostKeyChecking=no scripts/deploy_frontend.sh ec2-user@$DEPLOY_HOST_EFFECTIVE:/tmp/deploy_frontend.sh
-            ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no ec2-user@$DEPLOY_HOST_EFFECTIVE "chmod +x /tmp/deploy_backend.sh /tmp/deploy_frontend.sh"
-            ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no ec2-user@$DEPLOY_HOST_EFFECTIVE "/tmp/deploy_backend.sh '$AWS_REGION' '$ECR_ACCOUNT_ID_EFFECTIVE' '$BACKEND_ECR_REPO' '$IMAGE_TAG' '$BACKEND_LOG_GROUP'"
-            ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no ec2-user@$DEPLOY_HOST_EFFECTIVE "/tmp/deploy_frontend.sh '$AWS_REGION' '$ECR_ACCOUNT_ID_EFFECTIVE' '$FRONTEND_ECR_REPO' '$IMAGE_TAG' '$FRONTEND_LOG_GROUP'"
+            set -euo pipefail
+
+            cat > deploy.env <<EOF
+BACKEND_IMAGE=$BACKEND_IMAGE_URI
+FRONTEND_IMAGE=$FRONTEND_IMAGE_URI
+AWS_REGION=$AWS_REGION
+BACKEND_LOG_GROUP=$BACKEND_LOG_GROUP
+FRONTEND_LOG_GROUP=$FRONTEND_LOG_GROUP
+EOF
+
+            ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no ec2-user@$DEPLOY_HOST_EFFECTIVE "mkdir -p ~/app-deploy"
+            scp -i "$SSH_KEY" -o StrictHostKeyChecking=no docker-compose.deploy.yml ec2-user@$DEPLOY_HOST_EFFECTIVE:~/app-deploy/docker-compose.yml
+            scp -i "$SSH_KEY" -o StrictHostKeyChecking=no deploy.env ec2-user@$DEPLOY_HOST_EFFECTIVE:~/app-deploy/.env
+
+            ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no ec2-user@$DEPLOY_HOST_EFFECTIVE "
+              set -euo pipefail
+              if docker compose version >/dev/null 2>&1; then
+                DC='docker compose'
+              elif command -v docker-compose >/dev/null 2>&1; then
+                DC='docker-compose'
+              else
+                echo 'Docker Compose is not installed on target host' >&2
+                exit 1
+              fi
+
+              cd ~/app-deploy
+              aws ecr get-login-password --region '$AWS_REGION' | docker login --username AWS --password-stdin '$ECR_REGISTRY'
+              \$DC up -d --pull always --remove-orphans
+              docker image prune -f || true
+            "
+
+            rm -f deploy.env
           '''
         }
       }
@@ -152,16 +215,6 @@ pipeline {
       echo "Image tag: ${env.IMAGE_TAG}"
       echo "Backend image: ${env.BACKEND_IMAGE_URI}"
       echo "Frontend image: ${env.FRONTEND_IMAGE_URI}"
-      script {
-        if (env.DEPLOY_HOST_EFFECTIVE?.trim()) {
-          echo "============================================"
-          echo "App URL:     http://${env.DEPLOY_HOST_EFFECTIVE}"
-          echo "Backend API: http://${env.DEPLOY_HOST_EFFECTIVE}:3000/api/health"
-          echo "Metrics:     http://${env.DEPLOY_HOST_EFFECTIVE}:3000/metrics"
-          echo "Jenkins:     http://${env.DEPLOY_HOST_EFFECTIVE}:8080"
-          echo "============================================"
-        }
-      }
     }
   }
 }
