@@ -161,41 +161,41 @@ EOF
             scp -i "$SSH_KEY" -o StrictHostKeyChecking=no docker-compose.deploy.yml ec2-user@$DEPLOY_HOST_EFFECTIVE:~/app-deploy/docker-compose.yml
             scp -i "$SSH_KEY" -o StrictHostKeyChecking=no deploy.env ec2-user@$DEPLOY_HOST_EFFECTIVE:~/app-deploy/.env
 
-            ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no ec2-user@$DEPLOY_HOST_EFFECTIVE "
-              set -euo pipefail
-              cd ~/app-deploy
-              aws ecr get-login-password --region '$AWS_REGION' | docker login --username AWS --password-stdin '$ECR_REGISTRY'
-              EXPECTED_PROJECT=\"\$(basename \"\$PWD\")\"
+            ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no ec2-user@$DEPLOY_HOST_EFFECTIVE "AWS_REGION='$AWS_REGION' ECR_REGISTRY='$ECR_REGISTRY' bash -se" <<'REMOTE_DEPLOY'
+set -euo pipefail
+cd ~/app-deploy
+aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "$ECR_REGISTRY"
+EXPECTED_PROJECT="$(basename "$PWD")"
 
-              # One-time migration guard:
-              # remove legacy containers that use the same fixed names but are not managed by this compose project.
-              for c in frontend backend redis redis-exporter; do
-                if docker ps -a --format '{{.Names}}' | grep -qx \"\$c\"; then
-                  project_label=\"\$(docker inspect -f '{{ index .Config.Labels \"com.docker.compose.project\" }}' \"\$c\" 2>/dev/null || true)\"
-                  if [ \"\$project_label\" != \"\$EXPECTED_PROJECT\" ]; then
-                    docker rm -f \"\$c\" >/dev/null 2>&1 || true
-                  fi
-                fi
-              done
+# One-time migration guard:
+# remove legacy containers that use the same fixed names but are not managed by this compose project.
+for c in frontend backend redis redis-exporter; do
+  if docker ps -a --format '{{.Names}}' | grep -qx "$c"; then
+    project_label="$(docker inspect -f '{{ index .Config.Labels "com.docker.compose.project" }}' "$c" 2>/dev/null || true)"
+    if [ "$project_label" != "$EXPECTED_PROJECT" ]; then
+      docker rm -f "$c" >/dev/null 2>&1 || true
+    fi
+  fi
+done
 
-              if docker compose version >/dev/null 2>&1; then
-                docker compose up -d --pull always --remove-orphans
-              elif command -v docker-compose >/dev/null 2>&1; then
-                docker-compose up -d --pull always --remove-orphans
-              else
-                echo 'Docker Compose not found on target host; installing standalone binary...'
-                sudo curl -fsSL "https://github.com/docker/compose/releases/download/v2.29.7/docker-compose-linux-x86_64" -o /usr/local/bin/docker-compose
-                sudo chmod +x /usr/local/bin/docker-compose
-                if command -v docker-compose >/dev/null 2>&1; then
-                  docker-compose up -d --pull always --remove-orphans
-                else
-                  echo 'Docker Compose installation failed on target host' >&2
-                  exit 1
-                fi
-              fi
+if docker compose version >/dev/null 2>&1; then
+  docker compose up -d --pull always --remove-orphans
+elif command -v docker-compose >/dev/null 2>&1; then
+  docker-compose up -d --pull always --remove-orphans
+else
+  echo 'Docker Compose not found on target host; installing standalone binary...'
+  sudo curl -fsSL "https://github.com/docker/compose/releases/download/v2.29.7/docker-compose-linux-x86_64" -o /usr/local/bin/docker-compose
+  sudo chmod +x /usr/local/bin/docker-compose
+  if command -v docker-compose >/dev/null 2>&1; then
+    docker-compose up -d --pull always --remove-orphans
+  else
+    echo 'Docker Compose installation failed on target host' >&2
+    exit 1
+  fi
+fi
 
-              docker image prune -f || true
-            "
+docker image prune -f || true
+REMOTE_DEPLOY
 
             rm -f deploy.env
           '''
