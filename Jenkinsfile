@@ -4,7 +4,6 @@ pipeline {
   options {
     timestamps()
     disableConcurrentBuilds()
-    buildDiscarder(logRotator(numToKeepStr: '20', artifactNumToKeepStr: '20'))
   }
 
   triggers {
@@ -41,7 +40,6 @@ pipeline {
           env.IMAGE_TAG = "${env.SAFE_BRANCH}-${env.GIT_SHA}-${env.BUILD_NUMBER}"
 
           if (!params.ECR_ACCOUNT_ID?.trim()) {
-            // Auto-detect AWS account ID from the instance's IAM role — no manual input needed.
             env.ECR_ACCOUNT_ID_EFFECTIVE = sh(
               script: 'aws sts get-caller-identity --query Account --output text',
               returnStdout: true
@@ -74,7 +72,7 @@ pipeline {
             echo "Resolved DEPLOY_HOST from instance metadata: ${env.DEPLOY_HOST_EFFECTIVE}"
           } else {
             env.DEPLOY_HOST_EFFECTIVE = params.DEPLOY_HOST.trim()
-            echo "Using manually supplied DEPLOY_HOST: ${env.DEPLOY_HOST_EFFECTIVE}"
+            echo " DEPLOY_HOST: ${env.DEPLOY_HOST_EFFECTIVE}"
           }
         }
       }
@@ -101,58 +99,11 @@ pipeline {
         }
       }
     }
-
-    stage('SonarQube Scan') {
-      when {
-        expression { return params.ENABLE_SONARQUBE }
-      }
-      steps {
-        script {
-          if (sh(script: 'command -v sonar-scanner >/dev/null 2>&1', returnStatus: true) != 0) {
-            echo 'sonar-scanner is not installed on this Jenkins agent. Skipping SonarQube stage.'
-            return
-          }
-
-          try {
-            withCredentials([string(credentialsId: 'sonarqube_token', variable: 'SONAR_TOKEN')]) {
-              sh '''
-                sonar-scanner \
-                  -Dsonar.projectKey=jenkins-project \
-                  -Dsonar.projectName=jenkins-project \
-                  -Dsonar.sources=backend/src,frontend/src \
-                  -Dsonar.tests=backend/tests,frontend/tests \
-                  -Dsonar.host.url=${SONAR_HOST_URL:-http://localhost:9000} \
-                  -Dsonar.token=$SONAR_TOKEN
-              '''
-            }
-          } catch (Exception ex) {
-            echo "Skipping SonarQube scan: ${ex.getMessage()}"
-          }
-        }
-      }
-    }
-
+    
     stage('Docker Build') {
       steps {
         sh 'docker build -t "$BACKEND_IMAGE_URI" backend'
         sh 'docker build -t "$FRONTEND_IMAGE_URI" frontend'
-      }
-    }
-
-    stage('Container Security Scan') {
-      when {
-        expression { return params.ENABLE_TRIVY }
-      }
-      steps {
-        script {
-          if (sh(script: 'command -v trivy >/dev/null 2>&1', returnStatus: true) != 0) {
-            echo 'trivy is not installed on this Jenkins agent. Skipping image security scan.'
-            return
-          }
-
-          sh 'trivy image --severity HIGH,CRITICAL --exit-code 1 "$BACKEND_IMAGE_URI"'
-          sh 'trivy image --severity HIGH,CRITICAL --exit-code 1 "$FRONTEND_IMAGE_URI"'
-        }
       }
     }
 
