@@ -13,8 +13,7 @@ locals {
     var.cloudtrail_s3_bucket_name,
     "${var.project_name}-${random_id.bucket_suffix.hex}"
   )
-  # Default Grafana password if not provided via env var.
-  grafana_password = coalesce(var.grafana_admin_password, "ChangeMe123!")
+  grafana_password = coalesce(var.grafana_admin_password)
   # Generate EC2 key pair by default. Use existing key only when explicitly requested.
   requested_existing_key_name = trimspace(var.key_name == null ? "" : var.key_name)
   use_existing_key            = var.use_existing_key && local.requested_existing_key_name != ""
@@ -75,7 +74,7 @@ resource "aws_security_group" "jenkins_app" {
     from_port   = 8080
     to_port     = 8080
     protocol    = "tcp"
-    cidr_blocks = [var.allowed_cidr]
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
   ingress {

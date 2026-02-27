@@ -1,21 +1,15 @@
 #!/bin/bash
 set -euxo pipefail
 
-NODE_EXPORTER_VERSION="1.8.2"
-NODE_EXPORTER_DIR="node_exporter-$NODE_EXPORTER_VERSION.linux-amd64"
-NODE_EXPORTER_ARCHIVE="$NODE_EXPORTER_DIR.tar.gz"
-NODE_EXPORTER_URL="https://github.com/prometheus/node_exporter/releases/download/v$NODE_EXPORTER_VERSION/$NODE_EXPORTER_ARCHIVE"
-NODE_EXPORTER_TMP_ARCHIVE="/tmp/$NODE_EXPORTER_ARCHIVE"
-NODE_EXPORTER_TMP_DIR="/tmp/$NODE_EXPORTER_DIR"
-
 yum update -y
-yum install -y docker curl tar
+yum install -y docker
 systemctl enable docker
 systemctl start docker
 
 docker network inspect obs-net >/dev/null 2>&1 || docker network create obs-net
 
 mkdir -p /opt/observability/prometheus
+mkdir -p /opt/observability/grafana/provisioning/datasources
 
 cat >/opt/observability/prometheus/prometheus.yml <<PROM
 global:
@@ -32,91 +26,31 @@ scrape_configs:
       - targets: ["${app_private_ip}:9100", "localhost:9100"]
 PROM
 
-if [ ! -f /etc/yum.repos.d/grafana.repo ]; then
-  cat >/etc/yum.repos.d/grafana.repo <<'GRAFANA_REPO'
-[grafana]
-name=grafana
-baseurl=https://rpm.grafana.com
-repo_gpgcheck=1
-enabled=1
-gpgcheck=1
-gpgkey=https://rpm.grafana.com/gpg.key
-sslverify=1
-sslcacert=/etc/pki/tls/certs/ca-bundle.crt
-GRAFANA_REPO
-fi
-
-yum install -y grafana
-mkdir -p /etc/grafana/provisioning/datasources
-
-cat >/etc/grafana/provisioning/datasources/prometheus.yml <<GRAFANA_DS
+cat >/opt/observability/grafana/provisioning/datasources/prometheus.yml <<GRAFANA_DS
 apiVersion: 1
 datasources:
   - name: Prometheus
     type: prometheus
     access: proxy
-    url: http://localhost:9090
+    url: http://prometheus:9090
     isDefault: true
 GRAFANA_DS
 
-if ! id -u node_exporter >/dev/null 2>&1; then
-  useradd --system --no-create-home --shell /sbin/nologin node_exporter
-fi
-
-if [ ! -x /usr/local/bin/node_exporter ]; then
-  if [ ! -f "$NODE_EXPORTER_TMP_ARCHIVE" ]; then
-    curl -fsSL "$NODE_EXPORTER_URL" -o "$NODE_EXPORTER_TMP_ARCHIVE"
-  fi
-  rm -rf "$NODE_EXPORTER_TMP_DIR"
-  tar -xzf "$NODE_EXPORTER_TMP_ARCHIVE" -C /tmp
-  install -m 0755 "$NODE_EXPORTER_TMP_DIR/node_exporter" /usr/local/bin/node_exporter
-fi
-
-if docker container inspect node-exporter >/dev/null 2>&1; then
-  docker rm -f node-exporter
-fi
-if docker container inspect node_exporter >/dev/null 2>&1; then
-  docker rm -f node_exporter
-fi
-if docker container inspect grafana >/dev/null 2>&1; then
-  docker rm -f grafana
-fi
-
-cat >/etc/systemd/system/node_exporter.service <<'NODE_EXPORTER_SERVICE'
-[Unit]
-Description=Prometheus Node Exporter
-Wants=network-online.target
-After=network-online.target
-
-[Service]
-User=node_exporter
-Group=node_exporter
-Type=simple
-ExecStart=/usr/local/bin/node_exporter
-Restart=on-failure
-RestartSec=5s
-
-[Install]
-WantedBy=multi-user.target
-NODE_EXPORTER_SERVICE
-
-systemctl daemon-reload
-systemctl enable node_exporter
-systemctl restart node_exporter
-
 # Prometheus
-if ! docker container inspect prometheus >/dev/null 2>&1; then
-  docker run -d --name prometheus --restart unless-stopped \
-    --network obs-net \
-    -p 9090:9090 \
-    -v /opt/observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro \
-    prom/prometheus:v2.54.1
-elif ! docker ps --format '{{.Names}}' | grep -Fxq prometheus; then
-  docker start prometheus
-fi
+docker run -d --name prometheus --restart unless-stopped \
+  --network obs-net \
+  -p 9090:9090 \
+  -v /opt/observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro \
+  prom/prometheus:v2.54.1
 
-# Grafana (native package + systemd service)
-systemctl enable grafana-server
-systemctl restart grafana-server
-grafana-cli admin reset-admin-password '${grafana_admin_password}'
-systemctl restart grafana-server
+# Grafana
+docker run -d --name grafana --restart unless-stopped \
+  --network obs-net \
+  -p 3000:3000 \
+  -e GF_SECURITY_ADMIN_USER=admin \
+  -e GF_SECURITY_ADMIN_PASSWORD='${grafana_admin_password}' \
+  -v /opt/observability/grafana/provisioning:/etc/grafana/provisioning:ro \
+  grafana/grafana:11.2.2
+
+# Node exporter for host metrics
+docker run -d --name node-exporter --restart unless-stopped -p 9100:9100 prom/node-exporter:latest
