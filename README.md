@@ -169,25 +169,17 @@ docker image prune -af || true
 Add your screenshots to `screenshots/` and keep the naming below (or rename links accordingly).
 
 ### 1. Jenkins pipeline successful run
-![Jenkins pipeline success](screenshots/01-jenkins-pipeline-success.png)
+![Jenkins pipeline success](screenshots/jenkins-success.png)
 
 ### 2. Jenkins stage view (build -> test -> push -> deploy)
-![Jenkins stage view](screenshots/02-jenkins-stage-view.png)
+![Jenkins stage view](screenshots/stages.png)
 
 ### 3. ECR images pushed
-![ECR images](screenshots/03-ecr-images.png)
-
-### 4. Application accessible on EC2 public IP/DNS
-![Application on EC2](screenshots/04-app-ec2-access.png)
-
-### 5. Backend health endpoint
-![Backend health](screenshots/05-backend-health-endpoint.png)
+![ECR images](screenshots/ecr.png)
 
 ### 6. Jenkins console output for deploy stage
-![Deploy logs](screenshots/06-jenkins-deploy-logs.png)
+![Deploy logs](screenshots/deploy-logs.png)
 
-### 7. Docker containers running on EC2
-![EC2 docker ps](screenshots/07-ec2-docker-ps.png)
 
 ## Runbook and Supporting Docs
 - `docs/runbook.md`
