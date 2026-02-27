@@ -171,8 +171,15 @@ EOF
               elif command -v docker-compose >/dev/null 2>&1; then
                 docker-compose up -d --pull always --remove-orphans
               else
-                echo 'Docker Compose is not installed on target host' >&2
-                exit 1
+                echo 'Docker Compose not found on target host; installing standalone binary...'
+                sudo curl -fsSL "https://github.com/docker/compose/releases/download/v2.29.7/docker-compose-linux-x86_64" -o /usr/local/bin/docker-compose
+                sudo chmod +x /usr/local/bin/docker-compose
+                if command -v docker-compose >/dev/null 2>&1; then
+                  docker-compose up -d --pull always --remove-orphans
+                else
+                  echo 'Docker Compose installation failed on target host' >&2
+                  exit 1
+                fi
               fi
 
               docker image prune -f || true
