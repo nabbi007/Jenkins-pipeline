@@ -22,28 +22,10 @@ pipeline {
   }
 
   stages {
+    
     stage('Checkout') {
       steps {
-        script {
-          try {
-            checkout([
-              $class: 'GitSCM',
-              branches: scm.branches,
-              userRemoteConfigs: scm.userRemoteConfigs,
-              doGenerateSubmoduleConfigurations: false,
-              extensions: (scm.extensions ?: []) + [[
-                $class: 'CloneOption',
-                depth: 1,
-                shallow: true,
-                noTags: false,
-                timeout: 10
-              ]]
-            ])
-          } catch (Exception ex) {
-            echo "Shallow checkout not available, falling back to default checkout: ${ex.getMessage()}"
-            checkout scm
-          }
-        }
+        checkout scm
       }
     }
 
@@ -68,6 +50,8 @@ pipeline {
           env.ECR_REGISTRY = "${env.ECR_ACCOUNT_ID_EFFECTIVE}.dkr.ecr.${params.AWS_REGION}.amazonaws.com"
           env.BACKEND_IMAGE_URI = "${env.ECR_ACCOUNT_ID_EFFECTIVE}.dkr.ecr.${params.AWS_REGION}.amazonaws.com/${params.BACKEND_ECR_REPO}:${env.IMAGE_TAG}"
           env.FRONTEND_IMAGE_URI = "${env.ECR_ACCOUNT_ID_EFFECTIVE}.dkr.ecr.${params.AWS_REGION}.amazonaws.com/${params.FRONTEND_ECR_REPO}:${env.IMAGE_TAG}"
+          env.BACKEND_LOG_GROUP_EFFECTIVE = params.BACKEND_LOG_GROUP?.trim() ? params.BACKEND_LOG_GROUP.trim() : '/project/backend'
+          env.FRONTEND_LOG_GROUP_EFFECTIVE = params.FRONTEND_LOG_GROUP?.trim() ? params.FRONTEND_LOG_GROUP.trim() : '/project/frontend'
 
           // Resolve deploy host — Jenkins and app run on the same EC2 instance.
           // Always fetch the current public IP from instance metadata so the pipeline
@@ -169,8 +153,8 @@ pipeline {
 BACKEND_IMAGE=$BACKEND_IMAGE_URI
 FRONTEND_IMAGE=$FRONTEND_IMAGE_URI
 AWS_REGION=$AWS_REGION
-BACKEND_LOG_GROUP=$BACKEND_LOG_GROUP
-FRONTEND_LOG_GROUP=$FRONTEND_LOG_GROUP
+BACKEND_LOG_GROUP=$BACKEND_LOG_GROUP_EFFECTIVE
+FRONTEND_LOG_GROUP=$FRONTEND_LOG_GROUP_EFFECTIVE
 EOF
 
             ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no ec2-user@$DEPLOY_HOST_EFFECTIVE "mkdir -p ~/app-deploy"
