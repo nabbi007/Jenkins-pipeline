@@ -7,6 +7,17 @@ services:
       - redis_votes:/data
     command: redis-server --appendonly yes
 
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: redis-exporter
+    restart: unless-stopped
+    depends_on:
+      - redis
+    ports:
+      - "9121:9121"
+    command:
+      - "--redis.addr=redis://redis:6379"
+
   backend:
     image: ${BACKEND_IMAGE:?BACKEND_IMAGE is required}
     container_name: backend
