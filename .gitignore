@@ -1,0 +1,29 @@
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+override.tf
+override.tf.json
+*.tfvars
+*.tfplan
+infra/terraform/*.pem
+
+# Node
+node_modules/
+coverage/
+
+# Frontend build output
+frontend/dist/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Jenkins
+.jenkins/
+
+# Screenshots / local artifacts
+screenshots/*.png
+screenshots/*.jpg

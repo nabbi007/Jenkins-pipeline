@@ -1,0 +1,28 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+rule_files:
+  - /etc/prometheus/alert_rules.yml
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'backend'
+    static_configs:
+      - targets: ['172.31.3.138:3000']
+
+  - job_name: 'node_exporter'
+    static_configs:
+      - targets: ['172.31.3.138:9100', 'localhost:9100']
+
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['172.31.3.138:9121']

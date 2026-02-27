@@ -1,0 +1,32 @@
+#!/bin/bash
+set -euxo pipefail
+
+yum update -y
+yum install -y git docker jq yum-utils unzip
+yum install -y java-17-amazon-corretto-headless
+
+systemctl enable docker
+systemctl start docker
+usermod -aG docker ec2-user
+
+wget -O /etc/yum.repos.d/jenkins.repo https://pkg.jenkins.io/redhat-stable/jenkins.repo
+rpm --import https://pkg.jenkins.io/redhat-stable/jenkins.io-2023.key
+yum install -y jenkins
+
+usermod -aG docker jenkins
+systemctl enable jenkins
+systemctl start jenkins
+
+# Install Node.js 16.x (official binary — compatible with Amazon Linux 2 glibc 2.26).
+# Node 20+ requires glibc 2.28 which AL2 does not ship.
+# Host Node is only used for Jenkins pipeline lint/test — Docker images use Node 20.
+curl -fsSL https://nodejs.org/dist/v16.20.2/node-v16.20.2-linux-x64.tar.xz -o /tmp/node.tar.xz
+tar -xJf /tmp/node.tar.xz -C /usr/local --strip-components=1
+
+# Install AWS CLI v2 for ECR auth in pipeline and deployment scripts.
+curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "/tmp/awscliv2.zip"
+unzip -q /tmp/awscliv2.zip -d /tmp
+/tmp/aws/install
+
+# Node exporter used by Prometheus.
+docker run -d --name node-exporter --restart unless-stopped -p 9100:9100 prom/node-exporter:latest
