@@ -165,6 +165,18 @@ EOF
               set -euo pipefail
               cd ~/app-deploy
               aws ecr get-login-password --region '$AWS_REGION' | docker login --username AWS --password-stdin '$ECR_REGISTRY'
+              EXPECTED_PROJECT=\"\$(basename \"\$PWD\")\"
+
+              # One-time migration guard:
+              # remove legacy containers that use the same fixed names but are not managed by this compose project.
+              for c in frontend backend redis redis-exporter; do
+                if docker ps -a --format '{{.Names}}' | grep -qx \"\$c\"; then
+                  project_label=\"\$(docker inspect -f '{{ index .Config.Labels \"com.docker.compose.project\" }}' \"\$c\" 2>/dev/null || true)\"
+                  if [ \"\$project_label\" != \"\$EXPECTED_PROJECT\" ]; then
+                    docker rm -f \"\$c\" >/dev/null 2>&1 || true
+                  fi
+                fi
+              done
 
               if docker compose version >/dev/null 2>&1; then
                 docker compose up -d --pull always --remove-orphans
