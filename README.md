@@ -1,197 +1,174 @@
-# Complete CI/CD Pipeline with Jenkins
+# Project 6 - Full Observability and Security Solution
 
-## Project Summary
-This project implements an end-to-end CI/CD pipeline in Jenkins for a web voting service. The pipeline checks out code, runs quality gates, builds Docker images, pushes images to a registry (AWS ECR), deploys to an EC2 host over SSH, and performs cleanup.
+## Overview
+This repository implements the Project 6 requirement to extend a containerized web application with full observability and AWS security controls.
 
-The implementation in this repository uses:
-- Backend: Node.js + Express
-- Frontend: Static web app served by Nginx
-- Data store: Redis
-- CI/CD: Jenkins Pipeline (`Jenkinsfile`)
-- Registry: AWS ECR
-- Deployment target: Amazon EC2 (Amazon Linux 2)
+The stack includes:
+- Containerized voting app (frontend, backend, Redis)
+- Prometheus for metrics collection
+- Grafana for dashboards and alert visualization
+- CloudWatch Logs for container log streaming
+- CloudTrail for account activity auditing
+- GuardDuty for threat detection
 
-## Deliverables Coverage
-| Requirement | Implementation in this repo |
+The backend exposes Prometheus metrics at `/metrics` and is deployed through Jenkins CI/CD.
+
+## Project 6 Requirement Mapping
+| Requirement | Implementation |
 |---|---|
-| Simple app with tests | `backend/` and `frontend/` with unit tests |
-| Dockerfile(s) | `backend/Dockerfile`, `frontend/Dockerfile` |
-| Jenkins pipeline | Root `Jenkinsfile` |
-| Pipeline stages | Checkout, build/test, Docker build, push, deploy, cleanup |
-| Push image to registry | `Push Image To ECR` stage |
-| Deploy to EC2 via SSH | `Deploy To EC2` stage using `ec2_ssh` credential |
-| Evidence and runbook | `docs/runbook.md`, `docs/evidence-checklist.md`, `screenshots/` |
+| App exposes metrics at `/metrics` | Backend endpoint: `http://<app-ip>:3000/metrics` |
+| Prometheus deployment and scraping | `observability/prometheus/prometheus.yml` |
+| Grafana dashboards (latency, RPS, error rate) | `observability/grafana/application-dashboard.json`, `observability/grafana/system-dashboard.json` |
+| Alert for error rate > 5% | `observability/prometheus/alert_rules.yml` (`HighErrorRate`) |
+| CloudWatch logging from containers | `scripts/deploy_backend.sh` and `scripts/deploy_frontend.sh` use `--log-driver=awslogs` |
+| CloudTrail enabled with S3 storage/encryption/lifecycle | Terraform resources in `infra/terraform/main.tf` |
+| GuardDuty enabled | `aws_guardduty_detector.main` in `infra/terraform/main.tf` |
+| Verification evidence | `screenshots/`, `docs/evidence-checklist.md` |
+| 2-page report | `docs/project6-report.md` |
 
-## Repository Structure
-| Path | Purpose |
+## Repository Deliverables
+| Submission item | Path in repo |
 |---|---|
-| `Jenkinsfile` | Full CI/CD pipeline definition |
-| `backend/` | Express API and tests |
-| `frontend/` | Frontend app and tests |
-| `scripts/deploy_backend.sh` | Pull and run backend image on EC2 |
-| `scripts/deploy_frontend.sh` | Pull and run frontend image on EC2 |
-| `scripts/install_jenkins_plugins.sh` | Jenkins plugin installation helper |
-| `jenkins/plugins.txt` | Required Jenkins plugins list |
-| `docs/runbook.md` | Operational runbook |
-| `screenshots/` | Pipeline and deployment evidence images |
+| Prometheus configuration | `observability/prometheus/prometheus.yml` |
+| Alert rules | `observability/prometheus/alert_rules.yml` |
+| Grafana dashboard JSON | `observability/grafana/application-dashboard.json`, `observability/grafana/system-dashboard.json` |
+| Screenshots | `screenshots/` |
+| 2-page report | `docs/project6-report.md` |
+| Infra-as-code for AWS security services | `infra/terraform/` |
 
-## Jenkins Prerequisites
-Install these on your Jenkins host (Amazon Linux 2):
-- Jenkins LTS
-- Docker Engine
-- AWS CLI
-- Git
-- Node.js/npm (required for lint/test/build stages)
+## Architecture Summary
+Two-host AWS deployment:
+- App/Jenkins EC2 host: Jenkins, frontend container, backend container, Redis, app metrics endpoint
+- Observability EC2 host: Prometheus, Grafana, Node Exporter (plus optional Loki/Promtail scripts)
 
-Ensure the `jenkins` user can run Docker:
+Security and logging resources:
+- CloudWatch log groups for backend/frontend container logs
+- CloudTrail trail with S3 bucket storage
+- S3 controls: server-side encryption, versioning, lifecycle retention
+- GuardDuty detector enabled
+
+## Prerequisites
+- AWS account with permissions for EC2, IAM, ECR, S3, CloudTrail, GuardDuty, CloudWatch
+- Terraform >= 1.5
+- AWS CLI configured locally
+- Jenkins LTS and Docker on app host
+- GitHub repository webhook to Jenkins (for automatic pipeline triggers)
+
+## Deployment Steps
+### 1. Provision infrastructure
 ```bash
-sudo usermod -aG docker jenkins
-sudo systemctl restart jenkins
+cd infra/terraform
+cp terraform.tfvars.example terraform.tfvars
+# set subnet_id and secure values (or export TF_VAR_* env vars)
+terraform init
+terraform apply
 ```
 
-## Required Jenkins Plugins
-Install the required plugins:
-- Pipeline (`workflow-aggregator`)
-- Git
-- Credentials Binding
-- Docker Pipeline (`docker-workflow`)
-- SSH Agent
-
-This repo already provides:
-- Plugin list: `jenkins/plugins.txt`
-- Installer script: `scripts/install_jenkins_plugins.sh`
-
-Example:
+Get output URLs:
 ```bash
-./scripts/install_jenkins_plugins.sh jenkins/plugins.txt
+terraform output
 ```
 
-## Jenkins Credentials
-Create the following credentials in Jenkins:
+Key outputs:
+- `frontend_url`
+- `backend_health_url`
+- `backend_metrics_url`
+- `grafana_url`
+- `prometheus_url`
+- `cloudtrail_bucket_name`
 
-| Credential ID | Type | Required | Usage |
-|---|---|---|---|
-| `git_credentials` | Username/Password or PAT | Optional | Private GitHub checkout |
-| `registry_creds` | Username/Password | Optional in this implementation | Use if you switch to Docker Hub/GHCR |
-| `ec2_ssh` | SSH private key | Yes | SSH/SCP deployment to EC2 |
-| `sonarqube_token` | Secret text | Optional | SonarQube stage (if enabled) |
+### 2. Deploy the app through Jenkins
+1. Create/scan a Jenkins multibranch pipeline for this repo.
+2. Ensure Jenkins has credential `ec2_ssh`.
+3. Push to `main` and run pipeline from `Jenkinsfile`.
+4. Confirm stages complete through `Deploy To EC2`.
 
-Note: Current pipeline pushes to AWS ECR using AWS CLI/IAM on the Jenkins host, so `registry_creds` is not required unless you change registries.
-
-## Pipeline Stages
-The implemented pipeline stages are:
-1. `Checkout`
-2. `Prepare Metadata`
-3. `Shift Left - Backend Lint/Test/SAST`
-4. `Shift Left - Frontend Lint/Test/Build`
-5. `SonarQube Scan` (optional)
-6. `Docker Build`
-7. `Container Security Scan` (optional)
-8. `Push Image To ECR`
-9. `Deploy To EC2` (main branch)
-10. `Cleanup`
-
-Assignment stage mapping:
-- Checkout -> `Checkout`
-- Install/Build -> backend/frontend install and frontend build stages
-- Test -> backend/frontend `test:ci`
-- Docker Build -> `Docker Build`
-- Push Image -> `Push Image To ECR`
-- Deploy (SSH) -> `Deploy To EC2`
-
-## How to Run
-### 1. Clone the repository
+### 3. Verify metrics endpoint
 ```bash
-git clone https://github.com/nabbi007/Jenkins-pipeline.git
-cd Jenkins-pipeline
+curl -s http://<app_public_ip>:3000/metrics | head
 ```
 
-### 2. Create Jenkins pipeline job
-Recommended: Multibranch Pipeline
-1. Jenkins -> New Item -> Multibranch Pipeline
-2. Add GitHub repository source
-3. Set script path to `Jenkinsfile`
-4. Configure webhook trigger (or poll)
-
-### 3. Configure pipeline parameters
-Common parameters in `Jenkinsfile`:
-- `AWS_REGION` (default `eu-west-1`)
-- `ECR_ACCOUNT_ID` (optional; auto-detected if blank)
-- `BACKEND_ECR_REPO` (default `backend-service`)
-- `FRONTEND_ECR_REPO` (default `frontend-web`)
-- `DEPLOY_HOST` (optional; auto-detected if blank on EC2)
-- `ENABLE_SONARQUBE` / `ENABLE_TRIVY`
-
-### 4. Run pipeline
-- Commit and push to branch
-- Jenkins runs stages automatically
-- Deploy executes on `main` when deploy host is resolved
-
-### 5. Verify deployment
-Replace `<EC2_PUBLIC_IP>`:
-```bash
-curl http://<EC2_PUBLIC_IP>/
-curl http://<EC2_PUBLIC_IP>:3000/api/health
-curl http://<EC2_PUBLIC_IP>:3000/api/poll
-curl http://<EC2_PUBLIC_IP>:3000/api/results
-curl http://<EC2_PUBLIC_IP>:3000/metrics
-```
+### 4. Verify Prometheus scraping
+Open:
+- `http://<observability_public_ip>:9090/targets`
 
 Expected:
-- Frontend reachable on port `80`
-- Backend health endpoint returns `status: ok`
-- Poll/results endpoints return JSON
-- Metrics endpoint responds
+- `backend` target `UP`
+- `node_exporter` targets `UP`
 
-## Local Run (Optional)
-Use Docker Compose for local validation:
+### 5. Verify Grafana dashboards
+Open:
+- `http://<observability_public_ip>:3000`
+
+Import dashboards from:
+- `observability/grafana/application-dashboard.json`
+- `observability/grafana/system-dashboard.json`
+
+Required dashboard evidence:
+- Requests per second
+- Error rate
+- Latency (p95)
+
+### 6. Trigger and verify alerts
+Generate failures to exceed 5% error rate:
 ```bash
-docker compose -f docker-compose.app.yml up -d --build
-curl http://localhost:8081
-curl http://localhost:3000/api/health
+./scripts/generate_error_traffic.sh http://<app_public_ip> 200
 ```
 
-Stop local stack:
+Validate in Prometheus:
+- Alert rule file: `observability/prometheus/alert_rules.yml`
+- Alert name: `HighErrorRate`
+- Threshold: `> 5%` for 2 minutes
+
+### 7. Verify AWS security telemetry
+CloudWatch:
+- Check log groups `/project/backend` and `/project/frontend`
+- Confirm recent container log streams/events
+
+CloudTrail:
+- Confirm trail is enabled
+- Confirm logs are delivered to S3 bucket from Terraform output
+- Verify S3 encryption and lifecycle policy in Terraform resources
+
+GuardDuty:
+- Confirm detector is enabled in the AWS console
+- Capture findings page (or no findings state)
+
+## Local Validation (Optional)
 ```bash
+docker compose -f docker-compose.app.yml up -d --build
+curl http://localhost:3000/api/health
+curl http://localhost:3000/metrics
 docker compose -f docker-compose.app.yml down -v
 ```
 
-## Cleanup After Deployment
-Pipeline cleanup runs `docker image prune -f`.
+## Evidence and Screenshots
+Add these files under `screenshots/` for submission:
+- `01-prometheus-targets-up.png`
+- `02-grafana-rps-latency-error.png`
+- `03-high-error-rate-alert-firing.png`
+- `04-cloudwatch-log-groups-streams.png`
+- `05-cloudtrail-trail-and-s3-logs.png`
+- `06-guardduty-detector-findings.png`
+- `07-app-metrics-endpoint.png`
 
-Manual cleanup on EC2 (if needed):
+Currently available:
+- `screenshots/backend-dashboard.png`
+- `screenshots/redis-dashboard.png`
+- `screenshots/system-dashboard.png`
+
+## Report
+Project report is available at:
+- `docs/project6-report.md`
+
+Template:
+- `docs/report-template.md`
+
+## Cleanup
+After demonstration:
 ```bash
-docker rm -f frontend backend redis || true
-docker image prune -af || true
+cd infra/terraform
+terraform destroy
 ```
 
-## Evidence and Screenshots
-Add your screenshots to `screenshots/` and keep the naming below (or rename links accordingly).
-
-### 1. Jenkins pipeline successful run
-![Jenkins pipeline success](screenshots/01-jenkins-pipeline-success.png)
-
-### 2. Jenkins stage view (build -> test -> push -> deploy)
-![Jenkins stage view](screenshots/02-jenkins-stage-view.png)
-
-### 3. ECR images pushed
-![ECR images](screenshots/03-ecr-images.png)
-
-### 4. Application accessible on EC2 public IP/DNS
-![Application on EC2](screenshots/04-app-ec2-access.png)
-
-### 5. Backend health endpoint
-![Backend health](screenshots/05-backend-health-endpoint.png)
-
-### 6. Jenkins console output for deploy stage
-![Deploy logs](screenshots/06-jenkins-deploy-logs.png)
-
-### 7. Docker containers running on EC2
-![EC2 docker ps](screenshots/07-ec2-docker-ps.png)
-
-## Runbook and Supporting Docs
-- `docs/runbook.md`
-- `docs/evidence-checklist.md`
-- `docs/pipeline-design.md`
-
-These files contain detailed operational and verification steps for demonstration/submission.
+This removes observability/security resources created for the project, including EC2 instances, CloudTrail trail/bucket policy dependencies, GuardDuty detector, and related infrastructure.
