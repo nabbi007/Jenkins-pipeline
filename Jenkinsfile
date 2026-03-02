@@ -12,13 +12,7 @@ pipeline {
   }
 
   parameters {
-    string(name: 'AWS_REGION', defaultValue: 'eu-west-1', description: 'AWS region containing ECR and EC2')
-    string(name: 'ECR_ACCOUNT_ID', defaultValue: '', description: 'AWS account ID used for ECR URI')
-    string(name: 'BACKEND_ECR_REPO', defaultValue: 'backend-service', description: 'ECR repository for backend image')
-    string(name: 'FRONTEND_ECR_REPO', defaultValue: 'frontend-web', description: 'ECR repository for frontend image')
     string(name: 'DEPLOY_HOST', defaultValue: '', description: 'EC2 public IP to deploy to. Leave blank to auto-detect from instance metadata (handles dynamic IPs on restart).')
-    string(name: 'BACKEND_LOG_GROUP', defaultValue: '/project/backend', description: 'CloudWatch Logs group for backend container')
-    string(name: 'FRONTEND_LOG_GROUP', defaultValue: '/project/frontend', description: 'CloudWatch Logs group for frontend container')
   }
 
   stages {
@@ -47,11 +41,11 @@ pipeline {
           } else {
             env.ECR_ACCOUNT_ID_EFFECTIVE = params.ECR_ACCOUNT_ID.trim()
           }
-          env.ECR_REGISTRY = "${env.ECR_ACCOUNT_ID_EFFECTIVE}.dkr.ecr.${params.AWS_REGION}.amazonaws.com"
-          env.BACKEND_IMAGE_URI = "${env.ECR_ACCOUNT_ID_EFFECTIVE}.dkr.ecr.${params.AWS_REGION}.amazonaws.com/${params.BACKEND_ECR_REPO}:${env.IMAGE_TAG}"
-          env.FRONTEND_IMAGE_URI = "${env.ECR_ACCOUNT_ID_EFFECTIVE}.dkr.ecr.${params.AWS_REGION}.amazonaws.com/${params.FRONTEND_ECR_REPO}:${env.IMAGE_TAG}"
-          env.BACKEND_LOG_GROUP_EFFECTIVE = params.BACKEND_LOG_GROUP?.trim() ? params.BACKEND_LOG_GROUP.trim() : '/project/backend'
-          env.FRONTEND_LOG_GROUP_EFFECTIVE = params.FRONTEND_LOG_GROUP?.trim() ? params.FRONTEND_LOG_GROUP.trim() : '/project/frontend'
+          env.ECR_REGISTRY = "${env.ECR_ACCOUNT_ID_EFFECTIVE}.dkr.ecr.${env.AWS_REGION}.amazonaws.com"
+          env.BACKEND_IMAGE_URI = "${env.ECR_ACCOUNT_ID_EFFECTIVE}.dkr.ecr.${env.AWS_REGION}.amazonaws.com/${env.BACKEND_ECR_REPO}:${env.IMAGE_TAG}"
+          env.FRONTEND_IMAGE_URI = "${env.ECR_ACCOUNT_ID_EFFECTIVE}.dkr.ecr.${env.AWS_REGION}.amazonaws.com/${env.FRONTEND_ECR_REPO}:${env.IMAGE_TAG}"
+          env.BACKEND_LOG_GROUP_EFFECTIVE = env.BACKEND_LOG_GROUP ?: '/project/backend'
+          env.FRONTEND_LOG_GROUP_EFFECTIVE = env.FRONTEND_LOG_GROUP ?: '/project/frontend'
 
           // Resolve deploy host — Jenkins and app run on the same EC2 instance.
           // Always fetch the current public IP from instance metadata so the pipeline
