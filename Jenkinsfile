@@ -41,11 +41,11 @@ pipeline {
           } else {
             env.ECR_ACCOUNT_ID_EFFECTIVE = params.ECR_ACCOUNT_ID.trim()
           }
-          env.ECR_REGISTRY = "${env.ECR_ACCOUNT_ID_EFFECTIVE}.dkr.ecr.${env.AWS_REGION}.amazonaws.com"
-          env.BACKEND_IMAGE_URI = "${env.ECR_ACCOUNT_ID_EFFECTIVE}.dkr.ecr.${env.AWS_REGION}.amazonaws.com/${env.BACKEND_ECR_REPO}:${env.IMAGE_TAG}"
-          env.FRONTEND_IMAGE_URI = "${env.ECR_ACCOUNT_ID_EFFECTIVE}.dkr.ecr.${env.AWS_REGION}.amazonaws.com/${env.FRONTEND_ECR_REPO}:${env.IMAGE_TAG}"
-          env.BACKEND_LOG_GROUP_EFFECTIVE = env.BACKEND_LOG_GROUP ?: '/project/backend'
-          env.FRONTEND_LOG_GROUP_EFFECTIVE = env.FRONTEND_LOG_GROUP ?: '/project/frontend'
+          env.ECR_REGISTRY = "${env.ECR_ACCOUNT_ID_EFFECTIVE}.dkr.ecr.${env.AWS_REGION.trim()}.amazonaws.com"
+          env.BACKEND_IMAGE_URI = "${env.ECR_ACCOUNT_ID_EFFECTIVE}.dkr.ecr.${env.AWS_REGION.trim()}.amazonaws.com/${env.BACKEND_ECR_REPO.trim()}:${env.IMAGE_TAG}"
+          env.FRONTEND_IMAGE_URI = "${env.ECR_ACCOUNT_ID_EFFECTIVE}.dkr.ecr.${env.AWS_REGION.trim()}.amazonaws.com/${env.FRONTEND_ECR_REPO.trim()}:${env.IMAGE_TAG}"
+          env.BACKEND_LOG_GROUP_EFFECTIVE = env.BACKEND_LOG_GROUP?.trim() ?: '/project/backend'
+          env.FRONTEND_LOG_GROUP_EFFECTIVE = env.FRONTEND_LOG_GROUP?.trim() ?: '/project/frontend'
 
           // Resolve deploy host — Jenkins and app run on the same EC2 instance.
           // Always fetch the current public IP from instance metadata so the pipeline
