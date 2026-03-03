@@ -1,193 +1,104 @@
-# Project 6 - Full Observability and Security Report
+# Project 6 - Dashboard Insights Report
 
-**Project:** CI/CD Voting App with Full Observability and AWS Security Controls  
-**Date:** February 23, 2026 (UTC)  
-**Region:** eu-west-1
+**Project:** CI/CD Voting App with Observability  
+**Date:** March 3, 2026
 
-## 1. Scope and Architecture
+## 1. Purpose
 
-This implementation extends the existing containerized voting application from the CI/CD project with:
+This report summarizes operational insights from three Grafana dashboards:
 
-- Metrics-driven monitoring using Prometheus and Grafana
-- Alerting for application quality thresholds (error rate and latency)
-- AWS security telemetry using CloudWatch Logs, CloudTrail, and GuardDuty
-- CloudTrail retention and data protection controls in S3 (encryption + lifecycle)
+- Backend Dashboard
+- System Dashboard
+- Redis Dashboard
 
-### Deployed Topology
+The goal is to show what the data says about application health, infrastructure stability, and caching behavior, then highlight practical improvements for reliability.
 
-- **App host (EC2):** `54.78.54.132`
-  - Jenkins
-  - Frontend container (Nginx)
-  - Backend container (Node.js/Express, `/metrics`)
-  - Redis container
-  - Node Exporter
-- **Observability host (EC2):** `108.130.163.21`
-  - Prometheus
-  - Grafana
-  - Node Exporter
-  - Loki/Promtail (already present on host)
+## 2. Dashboard Evidence
 
-Infrastructure and security resources are managed in Terraform under `infra/terraform/`.
+### 2.1 Backend Dashboard
 
-## 2. Observability Implementation
+![Backend Dashboard](../screenshots/backend-dashboard.png)
 
-### Metrics Collection
+**What this dashboard shows**
 
-The backend exposes Prometheus metrics at:
+- Request volume and request trend over time
+- Backend response latency behavior
+- Error activity and spikes in failed requests
+- API health at the service layer
 
-- `http://54.78.54.132:3000/metrics`
+**Insights from backend metrics**
 
-Core app SLI metrics used in dashboards and alerts:
+- The service appears reachable and actively serving traffic.
+- Latency patterns are generally stable, with short periods of higher response time under heavier request bursts.
+- Error activity is not constant; it tends to appear in bursts, which usually points to temporary load, dependency delays, or specific failing routes.
+- Tracking request rate together with latency and errors gives a reliable early signal for user-impacting incidents.
 
-- `http_requests_total`
-- `http_errors_total`
-- `http_request_duration_seconds` (histogram)
+### 2.2 System Dashboard
 
-### Prometheus Scrape Targets
+![System Dashboard](../screenshots/system-dashboard.png)
 
-Prometheus scrapes:
+**What this dashboard shows**
 
-- Backend app metrics (`172.31.3.138:3000`)
-- App node exporter (`172.31.3.138:9100`)
-- Observability node exporter (`localhost:9100`)
-- Redis exporter (`172.31.3.138:9121`)
-- Prometheus self-metrics (`localhost:9090`)
+- CPU usage and load behavior
+- Memory consumption and pressure
+- Disk and network activity
+- Host-level capacity indicators
 
-### Grafana Dashboards
+**Insights from system metrics**
 
-The dashboards in use show:
+- Host resource utilization is sufficient for normal traffic in the current setup.
+- CPU and memory usage are active but not saturated, indicating available headroom.
+- Short utilization peaks are visible and align with periods where application metrics become less stable.
+- System-level visibility helps confirm whether performance issues are application-related or resource-related.
 
-- Requests per second (RPS)
-- Error rate percentage
-- p95 latency
-- System utilization and host-level metrics
+### 2.3 Redis Dashboard
 
-Current screenshots are stored in:
+![Redis Dashboard](../screenshots/redis-dashboard.png)
 
-- `screenshots/backend-dashboard.png`
-- `screenshots/redis-dashboard.png`
-- `screenshots/system-dashboard.png`
+**What this dashboard shows**
 
-## 3. Alerting Validation (High Error Rate > 5%)
+- Redis memory usage and keyspace behavior
+- Command throughput and operation rate
+- Cache hit/miss patterns
+- Redis availability and runtime health
 
-### Alert Rules
+**Insights from Redis metrics**
 
-Alert rules are defined in:
+- Redis is functioning as an active dependency in the request path.
+- Memory usage appears controlled, suggesting no immediate memory-exhaustion risk.
+- Cache behavior indicates useful offload from the backend, but misses still occur and should be monitored during load increases.
+- If Redis throughput grows faster than cache efficiency, backend latency may rise; this makes Redis trend tracking important during releases.
 
-- `observability/prometheus/alert_rules.yml`
+## 3. Cross-Dashboard Summary
 
-The critical rule:
+Viewing these dashboards together provides a complete troubleshooting flow:
 
-- **Alert:** `HighErrorRate`
-- **Expression:** `(sum(rate(http_errors_total[5m])) / sum(rate(http_requests_total[5m]))) * 100 > 5`
-- **For:** `2m`
+1. Start with the backend dashboard to identify user-facing symptoms (latency or error increase).
+2. Check the system dashboard to confirm whether host resource pressure is contributing.
+3. Validate Redis dashboard behavior to see whether caching effectiveness changed at the same time.
 
-### Trigger Procedure Executed
+This correlation approach improves root-cause speed and reduces guesswork during incidents.
 
-1. Alert rules were copied to the live Prometheus host and loaded.
-2. Error traffic was generated against:
-   - `GET /api/fail`
-3. Prometheus rule and alert APIs were polled until the state reached `firing`.
+## 4. Key Findings
 
-### Validation Results
+- **Backend reliability is measurable and observable.** Request, latency, and error signals are available and useful for detecting degradation quickly.
+- **Infrastructure is stable for current demand.** System metrics show normal utilization with temporary peaks rather than persistent saturation.
+- **Redis contributes to performance stability.** Cache health appears good, and its telemetry helps explain backend changes during traffic shifts.
 
-Evidence file:
+Overall, the monitoring stack is providing the expected operational visibility for day-to-day support and incident response.
 
-- `docs/evidence/prometheus-alerts-after-trigger.json`
+## 5. Simple Improvement Plan
 
-Captured state confirms:
+1. Set dashboard thresholds for key signals:
+   - Error rate
+   - p95 latency
+   - CPU and memory saturation
+2. Add alert routing for actionable notifications (email/Slack).
+3. Review Redis hit/miss ratio weekly and tune cache TTL for high-traffic endpoints.
+4. Capture dashboard screenshots after each release for change tracking.
+5. Keep dashboard panels version-controlled with the project for repeatable environments.
 
-- `alertname=HighErrorRate`
-- `state=firing`
-- `severity=critical`
-- Alert active time present in payload (`activeAt`)
+## 6. Conclusion
 
-Additional evidence:
-
-- `docs/evidence/prometheus-high-error-rule-state.txt`
-- `docs/evidence/error-traffic-run.txt` (40/40 HTTP 500 responses)
-
-## 4. AWS Security and Logging Outcomes
-
-### CloudWatch Logs
-
-Container log groups and streams are present:
-
-- `docs/evidence/cloudwatch-log-groups.json`
-- `docs/evidence/cloudwatch-backend-streams.json`
-- `docs/evidence/cloudwatch-frontend-streams.json`
-
-Observed latest stream activity:
-
-- Backend last event: `2026-02-22T11:15:49Z`
-- Frontend last event: `2026-02-23T04:17:17Z`
-
-This confirms Docker logging integration is active for backend/frontend deployments.
-
-### CloudTrail and S3 Controls
-
-CloudTrail and S3 policy/retention/encryption are validated from Terraform state snapshots:
-
-- `docs/evidence/terraform-security-state-snippets.txt`
-
-Key verified settings:
-
-- CloudTrail enabled (`enable_logging=true`)
-- Multi-region trail enabled (`is_multi_region_trail=true`)
-- Trail writes to dedicated bucket `jenkins-cicd-observability-27035621`
-- S3 server-side encryption set to `AES256`
-- Lifecycle retention configured (`cloudtrail-retention`, 90-day expiry)
-
-### GuardDuty
-
-Terraform state confirms GuardDuty detector exists and is enabled:
-
-- Detector resource `aws_guardduty_detector.main`
-- `enable=true`
-
-Evidence references:
-
-- `docs/evidence/terraform-security-state-snippets.txt`
-- `docs/evidence/guardduty-summary.txt` (runtime API visibility from EC2 role)
-
-## 5. Constraints Observed During Validation
-
-During evidence collection from the EC2 instance role:
-
-- `cloudtrail:DescribeTrails` / `cloudtrail:GetTrailStatus` were denied
-- `logs:GetLogEvents` was denied
-
-These permission denials are expected under a restricted runtime role and indicate least-privilege boundaries are in effect. Resource creation and configuration are still verifiable through Terraform state and available read APIs.
-
-## 6. Insights and Recommendations
-
-### Reliability Insights
-
-- Error-rate alerting is functional and sensitive enough to detect failure bursts quickly.
-- Existing dashboards already provide the three required operational KPIs: RPS, latency p95, and error rate.
-- Current architecture supports quick triage by correlating app metrics and host metrics.
-
-### Security Insights
-
-- CloudWatch log groups and streams are active for both app containers.
-- CloudTrail is configured as a multi-region trail with encrypted S3 storage and lifecycle management.
-- GuardDuty detector is enabled in-region.
-
-### Recommended Next Steps
-
-1. Add Alertmanager routing (email/Slack/PagerDuty) for actionable paging.
-2. Add read-only IAM permissions for evidence collection roles (CloudTrail describe/status, CloudWatch get-log-events, GuardDuty list/get findings).
-3. Add dashboard provisioning in userdata/automation so UIDs and screenshots are reproducible after rebuild.
-4. Replace public Grafana exposure with VPN or private ALB + SSO.
-5. Remove `/api/fail` or guard it behind non-production feature flags.
-
-## 7. Cleanup Procedure
-
-After demonstration and grading, clean up resources:
-
-```bash
-cd infra/terraform
-terraform destroy
-```
-
-This removes EC2, CloudTrail, GuardDuty detector, S3 trail bucket, ECR repositories, and supporting IAM/security-group resources created by this stack.
+The backend, system, and Redis dashboards together provide clear observability coverage across application, host, and cache layers.  
+Current evidence indicates a stable platform with good monitoring foundations. With lightweight alerting and regular cache tuning, the system can improve response consistency and reduce production risk as traffic grows.

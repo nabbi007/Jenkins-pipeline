@@ -157,6 +157,19 @@ Currently available:
 - `screenshots/redis-dashboard.png`
 - `screenshots/system-dashboard.png`
 
+### Dashboard Previews
+Backend dashboard:
+
+![Backend Dashboard](screenshots/backend-dashboard.png)
+
+System dashboard:
+
+![System Dashboard](screenshots/system-dashboard.png)
+
+Redis dashboard:
+
+![Redis Dashboard](screenshots/redis-dashboard.png)
+
 ## Report
 Project report is available at:
 - `docs/project6-report.md`
